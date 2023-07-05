@@ -3,3 +3,4 @@
 *.zip
 /bandits-with-feature-extraction/mnist/
 bandit-research/bandits-with-feature-extraction/.ipynb_checkpoints/
+*.pt
