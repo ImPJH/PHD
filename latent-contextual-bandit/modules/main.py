@@ -189,7 +189,7 @@ if __name__ == "__main__":
                 print(f"alpha={alpha}")
                 result_container = np.zeros(trials, dtype=object)
                 for trial in trials:
-                    agent = LinUCB(d=d, num_actions=num_actions alpha=alpha)
+                    agent = PartialLinUCB(d=d, num_actions=num_actions, alpha=alpha)
                     regret = run(mode=mode, agent=agent, num_actions=num_actions, horizon=T, obs=X, 
                                  latent=Z, params=theta, use_tqdm=True, verbose=False)
                     result_container[trial] = regret

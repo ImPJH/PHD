@@ -137,19 +137,21 @@ def rademacher(size:int):
 def subgaussian_noise(distribution:str, size:int, random_state:int=None, std:float=None):
     if random_state:
         np.random.seed(random_state)
+        
+    if std == 0.:
+        return np.zeros(size)
     
     if distribution == "gaussian":
-        if not std:
+        if std is None:
             std = 1.
         noise = np.random.normal(loc=0, scale=std, size=size) 
     elif distribution == "uniform":
-        if not std:
-            std = np.sqrt(((high - low) ** 2) / 12)
-            uniform_rng = (-1., 1.)
+        if std is None:
+            uniform_rng = [-1., 1.]
         else:
             low = -np.sqrt(3) * std
             high = np.sqrt(3) * std
-            uniform_rng = (low, high)
+            uniform_rng = [low, high]
         noise = generate_uniform(dim=size, uniform_rng=uniform_rng)
     else:
         std = 1.
