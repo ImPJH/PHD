@@ -160,7 +160,7 @@ def subgaussian_noise(distribution:str, size:int, random_state:int=None, std:flo
 
 
 def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None, 
-                    bound_method:str=cfg.feat_bound_method, uniform_rng:list=None, random_state:int=None):
+                    bound_method:str=None, uniform_rng:list=None, random_state:int=None):
     if random_state:
         np.random.seed(random_state)
 

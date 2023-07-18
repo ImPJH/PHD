@@ -31,7 +31,7 @@ def get_cfg():
     parser.add_argument("--feat_uniform_rng", "-FUR", type=float, default=None, nargs=2)
     parser.add_argument("--latent_feature_bound", "-LFB", type=float, default=None)
     parser.add_argument("--obs_feature_bound", "-OFB", type=float, default=None)
-    parser.add_argument("--feat_bound_method", "-FBM", type="str", choices=["scaling", "clipping"])
+    parser.add_argument("--bound_method", "-BM", type="str", choices=["scaling", "clipping"], default=None)
     
     parser.add_argument("--map_dist", "-MD", type=str, default="uniform")
     parser.add_argument("--map_lower_bound", "-MLB", type=float, default=None)

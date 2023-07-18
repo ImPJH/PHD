@@ -159,8 +159,8 @@ if __name__ == "__main__":
         context_label = cfg.context_var
     
     ## generate the latent variable whose dimension is (action_space_size, k)
-    Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint,
-                        cov_dist=cfg.feat_cov_dist, bound=cfg.latent_feature_bound, uniform_rng=cfg.feat_uniform_rng, random_state=GEN_SEED)
+    Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, 
+                        bound=cfg.latent_feature_bound, bound_method=cfg.bound_method, uniform_rng=cfg.feat_uniform_rng, random_state=GEN_SEED)
        
     ## generate the context noise of shape (action_space_size, d)
     context_noise = subgaussian_noise(distribution="gaussian", size=action_space_size*d, random_state=GEN_SEED, std=context_var).reshape(action_space_size, d)
@@ -183,6 +183,7 @@ if __name__ == "__main__":
                                 uniform_rng=cfg.param_uniform_rng, random_state=GEN_SEED)
         
     if cfg.obs_feature_bound is not None:
+        # observable context must be scaled, not clipped
         norms = np.array([l2norm(X[i, :]) for i in range(action_space_size)])
         max_norm = np.max(norms)
         for i in range(action_space_size):
