@@ -1,6 +1,9 @@
 *.txt
 *.sh
 *.zip
-/bandits-with-feature-extraction/mnist/
-bandit-research/bandits-with-feature-extraction/.ipynb_checkpoints/
 *.pt
+
+/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/__pycache__/
+/home/sungwoopark/bandit-research/bandits-with-feature-extraction/mnist/
+/home/sungwoopark/bandit-research/bandits-with-feature-extraction/.ipynb_checkpoints/
+# /home/sungwoopark/bandit-research/latent-contextual-bandit/modules/results/

@@ -208,12 +208,12 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
     
     if distribution.lower() == "gaussian":
         assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
-        mat =  np.random.randn(latent_dim, obs_dim)
+        mat =  np.random.randn(obs_dim, latent_dim)
     else:
-        if not uniform_rng:
-            mat = generate_uniform(dim=(latent_dim, obs_dim), uniform_rng=(-np.sqrt(2/latent_dim), np.sqrt(2/latent_dim)))
+        if uniform_rng is None:
+            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=(-np.sqrt(2/latent_dim), np.sqrt(2/latent_dim)))
         else:
-            mat = generate_uniform(dim=(latent_dim, obs_dim), uniform_rng=uniform_rng)
+            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=uniform_rng)
         
     if lower_bound:
         ## constrain the lower bound of the minimum singular value
@@ -270,7 +270,7 @@ def save_result(result:dict, path:str, fname:str):
     if not os.path.exists(path):
         os.mkdir(path)
         
-    with open(f"{fname}.pkl", "wb") as f:
+    with open(f"{path}/{fname}.pkl", "wb") as f:
         pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
     
     print("Result is Saved Completely!")

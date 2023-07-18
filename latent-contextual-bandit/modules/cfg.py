@@ -7,13 +7,11 @@ def tuple_type(inputs):
 def get_cfg():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--path", type=str, default=None)
-    parser.add_argument("--fname", type=str, defautl=None)
     parser.add_argument("--tqdm", action="store_true")
     parser.add_argument("--mode", type=str, choices=['full', 'partial'])
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--alphas", type=float, nargs="+")
-    parser.add_argument("--num_arms", type=int, nargs="+")
+    parser.add_argument("--arms", type=int, nargs="+")
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--check_arms", action="store_true")
     
@@ -23,21 +21,21 @@ def get_cfg():
     parser.add_argument("--latent_dim", "-k", type=int, default=7)
     parser.add_argument("--num_visibles", "-m", type=int, default=None)
     parser.add_argument("--horizon", "-T", type=int, default=10000)
-    parser.add_argument("--seed", "-S", type=int, default=None)
+    parser.add_argument("--seed", "-S", type=int, default=[None, None], nargs=2)
     
     parser.add_argument("--is_partial", "-P", action="store_true")
     
     parser.add_argument("--feat_dist", "-FD", type=str, default="gaussian")
-    parser.add_argument("--feat_cov_dist", "-FCD", type=str, default=None)
     parser.add_argument("--feat_disjoint", action="store_true")
+    parser.add_argument("--feat_cov_dist", "-FCD", type=str, default=None)
     parser.add_argument("--feat_uniform_rng", "-FUR", type=float, default=None, nargs=2)
     parser.add_argument("--latent_feature_bound", "-LFB", type=float, default=None)
-    parser.add_argument("--obs_feature_bound", "-OFB", type=float, default=1.)
+    parser.add_argument("--obs_feature_bound", "-OFB", type=float, default=None)
     
     parser.add_argument("--map_dist", "-MD", type=str, default="uniform")
     parser.add_argument("--map_lower_bound", "-MLB", type=float, default=None)
     parser.add_argument("--map_upper_bound", "-MUB", type=float, default=None)
-    parser.add_argument("--map_unifrom_rng", "-MUR", type=float, default=None, nargs=2)
+    parser.add_argument("--map_uniform_rng", "-MUR", type=float, default=None, nargs=2)
     
     parser.add_argument("--context_var", "-CV", type=str, default=None)
     parser.add_argument("--reward_noise_var", "-RNV", type=float, default=0.1)
