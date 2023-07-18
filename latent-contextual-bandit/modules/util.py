@@ -159,7 +159,8 @@ def subgaussian_noise(distribution:str, size:int, random_state:int=None, std:flo
     return noise
 
 
-def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None, uniform_rng:list=None, random_state:int=None):
+def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None, 
+                    bound_method:str=cfg.feat_bound_method, uniform_rng:list=None, random_state:int=None):
     if random_state:
         np.random.seed(random_state)
 
@@ -191,11 +192,18 @@ def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_d
                 feat[i, :] = L @ feat[i, :]
             
     if bound is not None:
+        assert bound_method in ["scaling", "clipping"], "Bounding method should either be 'scaling' or 'clipping'."
         ## bound the L2 norm of each row vector
-        norms = [l2norm(feat[i, :]) for i in range(size)]
-        max_norm = np.max(norms)
-        for i in range(size):
-            feat[i, :] *= (bound / max_norm)
+        if bound_method == "scaling":
+            norms = [l2norm(feat[i, :]) for i in range(size)]
+            max_norm = np.max(norms)
+            for i in range(size):
+                feat[i, :] *= (bound / max_norm)
+        elif bound_method == "clipping":
+            for i in range(size):
+                norm = l2norm(feat[i, :])
+                if norm > bound: 
+                    feat[i, :] *= (bound / norm)                
     
     return feat
 
