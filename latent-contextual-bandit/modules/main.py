@@ -35,9 +35,6 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], num_actions:in
                                                    uniform_rng=cfg.param_uniform_rng, random_state=random_state)
             else:
                 inherent_rewards = 0.
-
-            ## generate a fixed reward noise (num_actions, )
-            reward_noise = subgaussian_noise(distribution="gaussian", size=num_actions, random_state=random_state, std=reward_noise_var)
             
         else:
             is_fixed = False
@@ -51,8 +48,8 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], num_actions:in
             else:
                 inherent_rewards = 0.
                 
-            ## generate the reward noise (num_actions, )
-            reward_noise = subgaussian_noise(distribution="gaussian", size=num_actions, random_state=random_state+t, std=reward_noise_var)
+        ## generate the reward noise (num_actions, )
+        reward_noise = subgaussian_noise(distribution="gaussian", size=num_actions, random_state=random_state+t, std=reward_noise_var)
 
         if t == 0:
             print(f"Mode: {mode}\tInherent Rewards: {inherent_rewards}\tFixed Arm Set: {is_fixed}")
