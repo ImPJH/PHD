@@ -130,7 +130,7 @@ def show_result(result:dict, label_name:str, feat_dist_label:str, feat_disjoint:
     ax2.legend()
     
     fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.suptitle(f"Z{FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}")    
+    fig.suptitle(f"Z{FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, bound={cfg.bound_method}")    
     return fig
 
 
@@ -234,7 +234,7 @@ if __name__ == "__main__":
             label_name = "alpha"
     
     ## save the result plot
-    fname = f"experiment_result_{datetime.now()}"
+    fname = f"experiment_result_{datetime.now()}_{cfg.bound_method}"
     fig = show_result(result=result, label_name=label_name, feat_dist_label=cfg.feat_dist, feat_disjoint=cfg.feat_disjoint, 
                     context_label=context_label, reward_label=str(cfg.reward_noise_var))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
