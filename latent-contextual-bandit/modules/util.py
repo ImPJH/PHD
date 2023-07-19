@@ -1,5 +1,6 @@
 import os
 import pickle
+import json
 import numpy as np
 from typing import Union
 from cfg import get_cfg
@@ -274,11 +275,16 @@ def save_plot(fig:Figure, path:str, fname:str):
     print("Plot is Saved Completely!")
     
 
-def save_result(result:dict, path:str, fname:str):
+def save_result(result:dict, path:str, fname:str, filetype:str):
+    assert filetype in ["pickle", "json"]
     if not os.path.exists(path):
         os.mkdir(path)
-        
-    with open(f"{path}/{fname}.pkl", "wb") as f:
-        pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    if filetype == "pickle":
+        with open(f"{path}/{fname}.pkl", "wb") as f:
+            pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
+    elif filetype == "json":
+        with open(f"{path}/{fname}.json", "w") as f:
+            json.dump(result, f)
     
     print("Result is Saved Completely!")

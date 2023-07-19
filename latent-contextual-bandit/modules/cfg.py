@@ -46,4 +46,6 @@ def get_cfg():
     parser.add_argument("--param_uniform_rng", "-PUR", type=float, default=None, nargs=2)
     parser.add_argument("--param_disjoint", action="store_true")
     
+    parser.add_argument("--filetype", type=str, choices=["pickle", "json"], default="pickle")
+    
     return parser.parse_args()

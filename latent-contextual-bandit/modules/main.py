@@ -240,6 +240,5 @@ if __name__ == "__main__":
     save_plot(fig, path=FIGURE_PATH, fname=fname)
     
     out = vars(cfg)
-    out['figure'] = fig
-    save_result(result=out, path=RESULT_PATH, fname=fname)
+    save_result(result=out, path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
 
