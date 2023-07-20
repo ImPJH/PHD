@@ -155,9 +155,13 @@ if __name__ == "__main__":
     else:
         context_var = float(cfg.context_var)
         context_label = cfg.context_var
-        
-    RESULT_PATH = f"./{mode}/results"
-    FIGURE_PATH = f"./{mode}/figures"
+    if action_space_size == num_actions:
+        is_fixed = "fixed"
+    else:
+        is_fixed = "unfixed"
+    
+    RESULT_PATH = f"./results/{mode}/{is_fixed}"
+    FIGURE_PATH = f"./figures/{mode}/{is_fixed}"
     
     ## generate the latent variable whose dimension is (action_space_size, k)
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, 
