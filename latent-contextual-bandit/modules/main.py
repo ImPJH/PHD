@@ -52,7 +52,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], num_actions:in
         reward_noise = subgaussian_noise(distribution="gaussian", size=num_actions, random_state=random_state+t, std=reward_noise_var)
 
         if t == 0:
-            print(f"Mode: {mode}\tInherent Rewards: {inherent_rewards}\tFixed Arm Set: {is_fixed}")
+            print(f"Mode: {mode}\tInherent Rewards: {type(inherent_rewards)}\tFixed Arm Set: {is_fixed}")
         
         ## observe the actions (num_actions, d), (num_actions, k or m)
         action_set, latent_action_set = obs[indices], latent[indices]

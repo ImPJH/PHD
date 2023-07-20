@@ -23,8 +23,6 @@ def get_cfg():
     parser.add_argument("--horizon", "-T", type=int, default=10000)
     parser.add_argument("--seed", "-S", type=int, default=[None, None], nargs=2)
     
-    parser.add_argument("--is_partial", "-P", action="store_true")
-    
     parser.add_argument("--feat_dist", "-FD", type=str, default="gaussian")
     parser.add_argument("--feat_disjoint", action="store_true")
     parser.add_argument("--feat_cov_dist", "-FCD", type=str, default=None)
