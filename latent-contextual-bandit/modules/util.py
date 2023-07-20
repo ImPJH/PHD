@@ -220,7 +220,7 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
         mat =  np.random.randn(obs_dim, latent_dim)
     else:
         if uniform_rng is None:
-            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=(-np.sqrt(2/obs_dim), np.sqrt(2/obs_dim)))
+            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=(-np.sqrt(6/(obs_dim+latent_dim)), np.sqrt(6/(obs_dim+latent_dim))))
         else:
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=uniform_rng)
         
