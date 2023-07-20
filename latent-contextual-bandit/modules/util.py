@@ -269,16 +269,14 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
 
 
 def save_plot(fig:Figure, path:str, fname:str):
-    if not os.path.exists(path):
-        os.mkdir(path)
+    os.makedirs(path, exist_ok=True)
     fig.savefig(f"{path}/{fname}.png")
     print("Plot is Saved Completely!")
     
 
 def save_result(result:dict, path:str, fname:str, filetype:str):
     assert filetype in ["pickle", "json"]
-    if not os.path.exists(path):
-        os.mkdir(path)
+    os.makedirs(path, exist_ok=True)
     
     if filetype == "pickle":
         with open(f"{path}/{fname}.pkl", "wb") as f:
