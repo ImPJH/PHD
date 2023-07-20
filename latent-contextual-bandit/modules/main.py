@@ -2,9 +2,6 @@ from cfg import get_cfg
 from models import *
 from util import *
 
-RESULT_PATH = "./results"
-FIGURE_PATH = "./figures"
-
 FEAT_DICT = {
     ("gaussian", True): "$\sim N(0, I)$",
     ("gaussian", False): "$\sim N(0, \Sigma)$",
@@ -52,8 +49,12 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], num_actions:in
         reward_noise = subgaussian_noise(distribution="gaussian", size=num_actions, random_state=random_state+t, std=reward_noise_var)
 
         if t == 0:
-            print(f"Mode: {mode}\tInherent Rewards: {type(inherent_rewards)}\tFixed Arm Set: {is_fixed}")
-        
+            if type(inherent_rewards) == float:
+                is_inherent = False
+            else:
+                is_inherent = True
+            print(f"Mode: {mode},\tInherent Rewards: {is_inherent},\tFixed Arm Set: {is_fixed}")
+            
         ## observe the actions (num_actions, d), (num_actions, k or m)
         action_set, latent_action_set = obs[indices], latent[indices]
         if mode == "partial":
@@ -154,6 +155,9 @@ if __name__ == "__main__":
     else:
         context_var = float(cfg.context_var)
         context_label = cfg.context_var
+        
+    RESULT_PATH = f"./{mode}/results"
+    FIGURE_PATH = f"./{mode}/figures"
     
     ## generate the latent variable whose dimension is (action_space_size, k)
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, 

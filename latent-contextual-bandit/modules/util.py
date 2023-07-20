@@ -220,7 +220,7 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
         mat =  np.random.randn(obs_dim, latent_dim)
     else:
         if uniform_rng is None:
-            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=(-np.sqrt(2/obs_dim), np.sqrt(2/obs_dim)))
+            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=(-np.sqrt(6/(obs_dim+latent_dim)), np.sqrt(6/(obs_dim+latent_dim))))
         else:
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=uniform_rng)
         
@@ -269,16 +269,14 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
 
 
 def save_plot(fig:Figure, path:str, fname:str):
-    if not os.path.exists(path):
-        os.mkdir(path)
+    os.makedirs(path, exist_ok=True)
     fig.savefig(f"{path}/{fname}.png")
     print("Plot is Saved Completely!")
     
 
 def save_result(result:dict, path:str, fname:str, filetype:str):
     assert filetype in ["pickle", "json"]
-    if not os.path.exists(path):
-        os.mkdir(path)
+    os.makedirs(path, exist_ok=True)
     
     if filetype == "pickle":
         with open(f"{path}/{fname}.pkl", "wb") as f:
