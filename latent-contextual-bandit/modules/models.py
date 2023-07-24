@@ -34,7 +34,7 @@ class LinUCB(ContextualBandit):
         maximum = np.max(ucb_scores)
         argmax, = np.where(ucb_scores == maximum)
         
-        return np.random.choice(argmax)
+        return np.random.choice(argmax), theta_hat
     
     def update(self, x, r):
         # x: context of the chosen action (d, )

@@ -10,73 +10,59 @@ FEAT_DICT = {
 }
 
 
-def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], num_actions:int, horizon:int, obs:np.ndarray, 
-        latent:np.ndarray, reward_params:np.ndarray, reward_noise_var:float, use_tqdm:bool, verbose:bool, random_state:int):
-    action_space_size, _ = obs.shape
-    assert action_space_size >= num_actions, "The cardinality of the entire action space must be larger than the number of actions."
+def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], num_actions:int, horizon:int, obs:np.ndarray, latent:np.ndarray, 
+        reward_params:np.ndarray, reward_noise_var:float, use_tqdm:bool, verbose:bool, random_state:int, is_fixed:bool):
     
+    ## check whether view a progress bar or not
     if use_tqdm:
         bar = tqdm(range(horizon))
     else:
         bar = range(horizon)
+        
+    ## check the mode
+    if mode == "partial":
+        assert is_fixed, f"The mode '{mode}' requires arm sets to be fixed."
+        inherent_rewards = param_generator(dimension=num_actions, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+                                           uniform_rng=cfg.param_uniform_rng, random_state=random_state)
+    else:
+        inherent_rewards = 0.
     
-    regrets = np.zeros(horizon)
+    regrets = np.zeros(horizon) ## array for instance regrets
+    theta_errors = np.zeros(horizon) ## array for empirical error between theta_hat and true_theta
     for t in bar:
-        if action_space_size == num_actions:
-            is_fixed = True
-            ## fixed action space
+        if is_fixed:
             indices = np.arange(num_actions)
-            if mode == "partial":
-                ## here the random state must be different to that used for generating reward parameters
-                inherent_rewards = param_generator(dimension=num_actions, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                                   uniform_rng=cfg.param_uniform_rng, random_state=random_state)
-            else:
-                inherent_rewards = 0.
-            
         else:
-            is_fixed = False
-            indices = np.random.randint(0, action_space_size, num_actions)
-            if mode == "partial":
-                ## here the random state must be different to that used for generating reward parameters
-                ## additionally, as arms are newly sampled at each round, so are their inherent rewards
-                ## thus the iterator, t, is added to the seed
-                inherent_rewards = param_generator(dimension=num_actions, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                                   uniform_rng=cfg.param_uniform_rng, random_state=random_state+t)
-            else:
-                inherent_rewards = 0.
-                
+            ## assume that each action is different to one another in the same arm set
+            indices = np.random.choice(np.arange(action_space_size), size=num_actions, replace=False)
+            
         ## generate the reward noise (num_actions, )
         reward_noise = subgaussian_noise(distribution="gaussian", size=num_actions, random_state=random_state+t, std=reward_noise_var)
-
-        if t == 0:
-            if type(inherent_rewards) == float:
-                is_inherent = False
-            else:
-                is_inherent = True
-            print(f"Mode: {mode},\tInherent Rewards: {is_inherent},\tFixed Arm Set: {is_fixed}")
-            
+        
         ## observe the actions (num_actions, d), (num_actions, k or m)
         action_set, latent_action_set = obs[indices], latent[indices]
         if mode == "partial":
-            onehot = np.identity(num_actions)
-            action_set = np.c_[action_set, onehot]
+            action_set = np.concatenate([action_set, np.identity(num_actions)], axis=1)
         
         ## compute the rewards and the optimal actions
         expected_rewards = latent_action_set @ reward_params + inherent_rewards
         true_rewards = expected_rewards + reward_noise
         if t == 0:
-            print(f"Reward range = [{np.amin(expected_rewards):.4f}, {np.amax(expected_rewards):.4f}]")
+            print(f"Mode: {mode},\tFixed Arm Set: {is_fixed},\tReward range = [{np.amin(expected_rewards):.4f}, {np.amax(expected_rewards):.4f}]")
         optimal_action = np.argmax(expected_rewards)
         optimal_reward = expected_rewards[optimal_action]
         
-        ## choose the best action
-        chosen_action = agent.choose(action_set)
+        ## choose the best action and compute the empirical error between theta_hat and true_theta
+        if isinstance(agent, LineGreedy):
+            chosen_action = agent.choose(action_set)
+        else:
+            chosen_action, theta_hat = agent.choose(action_set)
+            theta_errors[t] = l2norm((theta_hat - reward_params))
         chosen_reward = true_rewards[chosen_action]
         chosen_context = action_set[chosen_action]
         
         ## compute the regret
-        instance_regret = optimal_reward - expected_rewards[chosen_action]
-        regrets[t] = instance_regret
+        regrets[t] = optimal_reward - expected_rewards[chosen_action]
         
         ## update the agent
         agent.update(chosen_context, chosen_reward)
@@ -84,48 +70,54 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], num_actions:in
         if verbose: 
             print(f"round {t+1}\toptimal action : {optimal_action}\toptimal reward : {optimal_reward:.3f}")
             print(f"\tchosen action : {chosen_action}\trealized reward : {chosen_reward:.3f}, expected reward: {expected_rewards[chosen_action]:.3f}")
-            print(f"\tinstance regret : {instance_regret:.3f}, cumulative regret : {np.sum(regrets):.3f}")
+            print(f"\ttheta empirical error : {theta_errors[t]}, instance regret : {regrets[t]:.3f}, cumulative regret : {np.sum(regrets):.3f}")
             
-    return regrets
+    return regrets, theta_errors
 
 
-def show_rewards(exp_rewards:np.ndarray, true_rewards:np.ndarray):
-    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(11, 5))
-
-    ax1.hist(exp_rewards)
-    ax1.grid(True)
-    ax1.set_xlabel("$\mathbb{E}[T]$")
+def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, 
+                context_label:str, reward_label:str, figsize:tuple=(16, 14)):
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=figsize)
     
-    ax2.hist(true_rewards)
-    ax2.grid(True)
-    ax2.set_xlabel("$\mathbb{E}[T]+\epsilon_t$")
-    
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    
-    exp_label = "$\mathbb{E}[T]$"
-    fig.suptitle(f"{exp_label}$\in$[{np.amin(exp_rewards):.4f}, {np.amax(exp_rewards):.4f}]")
-    return fig
-
-
-def show_result(result:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, context_label:str, reward_label:str):
-    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(14, 5))
-    for key, value in result.items():
+    for key, value in regrets.items():
         mean = np.mean(value, axis=0)
-        ax1.plot(mean, label=f"{label_name}={key}")
-    ax1.grid(True)
-    ax1.set_xlabel("Round")
-    ax1.set_ylabel("$R_T$")
-    ax1.legend()
+        ax[0][0].plot(mean, label=f"{label_name}={key}")
+    ax[0][0].grid(True)
+    ax[0][0].set_xlabel("Round")
+    ax[0][0].set_ylabel("$R_t$")
+    ax[0][0].set_title("Mean Regret")
+    ax[0][0].legend()
     
-    for key, value in result.items():
+    for key, value in regrets.items():
         mean = np.mean(value, axis=0)
         std = np.std(value, axis=0, ddof=1)
-        ax2.plot(mean, label=f"{label_name}={key}")
-        ax2.fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
-    ax2.grid(True)
-    ax2.set_xlabel("Round")
-    ax2.set_ylabel("$R_T$")
-    ax2.legend()
+        ax[0][1].plot(mean, label=f"{label_name}={key}")
+        ax[0][1].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
+    ax[0][1].grid(True)
+    ax[0][1].set_xlabel("Round")
+    ax[0][1].set_ylabel("$R_t$")
+    ax[0][1].set_title("Mean Regret $\pm$ 1 std")
+    ax[0][1].legend()
+    
+    for key, value in errors.items():
+        mean = np.mean(value, axis=0)
+        ax[0][0].plot(mean, label=f"{label_name}={key}")
+    ax[1][0].grid(True)
+    ax[1][0].set_xlabel("Round")
+    ax[1][0].set_ylabel("${\Vert \hat{\theta}-{\theta_*} \Vert}_2$")
+    ax[1][0].set_title("Mean Empirical Error")
+    ax[1][0].legend()
+    
+    for key, value in errors.items():
+        mean = np.mean(value, axis=0)
+        std = np.std(value, axis=0, ddof=1)
+        ax[1][1].plot(mean, label=f"{label_name}={key}")
+        ax[1][1].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
+    ax[1][1].grid(True)
+    ax[1][1].set_xlabel("Round")
+    ax[1][1].set_ylabel("${\Vert \hat{\theta}-{\theta_*} \Vert}_2$")
+    ax[1][1].set_title("Mean Empirical Error $\pm$ 1 std")
+    ax[1][1].legend()
     
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.suptitle(f"Z{FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, bound={cfg.bound_method}")    
@@ -141,6 +133,8 @@ if __name__ == "__main__":
     mode = cfg.mode
     action_space_size = cfg.action_space_size
     num_actions = cfg.num_actions
+    assert action_space_size >= num_actions, "The cardinality of the entire action space must be larger than the number of actions."
+    
     d = cfg.obs_dim
     k = cfg.latent_dim
     m = cfg.num_visibles
@@ -148,6 +142,7 @@ if __name__ == "__main__":
     GEN_SEED, RUN_SEED = cfg.seed
     ALPHAS = cfg.alphas
     ARMS = cfg.arms
+    
     if "T" in cfg.context_var:
         exp = cfg.context_var.split("T")[-1]
         context_var = T ** float(exp)
@@ -155,13 +150,16 @@ if __name__ == "__main__":
     else:
         context_var = float(cfg.context_var)
         context_label = cfg.context_var
+        
     if action_space_size == num_actions:
-        is_fixed = "fixed"
+        fixed_label = "fixed"
+        fixed_flag = True
     else:
-        is_fixed = "unfixed"
+        fixed_label = "unfixed"
+        fixed_flag = False
     
-    RESULT_PATH = f"./results/{mode}/{is_fixed}"
-    FIGURE_PATH = f"./figures/{mode}/{is_fixed}"
+    RESULT_PATH = f"./results/{mode}/{fixed_label}"
+    FIGURE_PATH = f"./figures/{mode}/{fixed_label}"
     
     ## generate the latent variable whose dimension is (action_space_size, k)
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, 
@@ -197,51 +195,66 @@ if __name__ == "__main__":
     if mode == "full":
         print(f"Mapping shape: {A.shape}\tParameter shape: {theta.shape}")
         assert ALPHAS is not None
-        result = dict()
+        regret_result = dict()
+        theta_result = dict()
         for alpha in ALPHAS:
             print(f"alpha={alpha}")
             result_container = np.zeros(trials, dtype=object)
+            theta_error_container = np.zeros(trials, dtype=object)
             for trial in range(trials):
                 agent = LinUCB(d=d, alpha=alpha)
-                regret = run(mode=mode, agent=agent, num_actions=num_actions, horizon=T, obs=X, latent=Z, reward_params=theta, 
-                             reward_noise_var=cfg.reward_noise_var, use_tqdm=cfg.tqdm, verbose=False, random_state=RUN_SEED+(trial*T))
+                regret, theta_error = run(mode=mode, agent=agent, num_actions=num_actions, horizon=T, obs=X,
+                                          latent=Z, reward_params=theta, reward_noise_var=cfg.reward_noise_var, 
+                                          use_tqdm=cfg.tqdm, verbose=False, random_state=RUN_SEED+(trial*T))
                 result_container[trial] = np.cumsum(regret)
-            result[alpha] = result_container
+                theta_error_container[trial] = theta_error
+            regret_result[alpha] = result_container
+            theta_result[alpha] = theta_error_container
         label_name = "alpha"
     else:
         print(f"Mapping shape: {A.shape}\tParameter shape: {theta.shape}")
         if cfg.check_arms:
             assert ARMS is not None
-            result = dict()
+            regret_result = dict()
+            theta_result = dict()
             alpha = ALPHAS[-1]
             for arms in ARMS:
                 print(f"Number of Arms={arms}")
                 result_container = np.zeros(trials, dtype=object)
+                theta_error_container = np.zeros(trials, dtype=object)
                 for trial in range(trials):
                     agent = PartialLinUCB(d=d, num_actions=arms, alpha=alpha)
-                    regret = run(mode=mode, agent=agent, num_actions=arms, horizon=T, obs=X, latent=Z, reward_params=theta, 
-                                 reward_noise_var=cfg.reward_noise_var, use_tqdm=cfg.tqdm, verbose=False, random_state=RUN_SEED+(trial*T))
+                    regret, theta_error = run(mode=mode, agent=agent, num_actions=arms, horizon=T, obs=X, 
+                                              latent=Z, reward_params=theta, reward_noise_var=cfg.reward_noise_var, 
+                                              use_tqdm=cfg.tqdm, verbose=False, random_state=RUN_SEED+(trial*T))
                     result_container[trial] = np.cumsum(regret)
-                result[arms] = result_container
+                    theta_error_container[trial] = theta_error
+                regret_result[arms] = result_container
+                theta_result[arms] = theta_error_container
             label_name = "Number of arms"
         else:
             assert ALPHAS is not None
-            result = dict()
+            regret_result = dict()
+            theta_result = dict()
             for alpha in ALPHAS:
                 print(f"alpha={alpha}")
                 result_container = np.zeros(trials, dtype=object)
+                theta_error_container = np.zeros(trials, dtype=object)
                 for trial in range(trials):
                     agent = PartialLinUCB(d=d, num_actions=num_actions, alpha=alpha)
-                    regret = run(mode=mode, agent=agent, num_actions=num_actions, horizon=T, obs=X, latent=Z, reward_params=theta, 
-                                 reward_noise_var=cfg.reward_noise_var, use_tqdm=cfg.tqdm, verbose=False, random_state=RUN_SEED+(trial*T))
+                    regret, theta_error = run(mode=mode, agent=agent, num_actions=num_actions, horizon=T, obs=X, 
+                                              latent=Z, reward_params=theta, reward_noise_var=cfg.reward_noise_var, 
+                                              use_tqdm=cfg.tqdm, verbose=False, random_state=RUN_SEED+(trial*T))
                     result_container[trial] = np.cumsum(regret)
-                result[alpha] = result_container
+                    theta_error_container[trial] = theta_error
+                regret_result[alpha] = result_container
+                theta_result[alpha] = theta_error_container
             label_name = "alpha"
     
     ## save the result plot
     fname = f"experiment_result_{datetime.now()}_{cfg.bound_method}"
-    fig = show_result(result=result, label_name=label_name, feat_dist_label=cfg.feat_dist, feat_disjoint=cfg.feat_disjoint, 
-                    context_label=context_label, reward_label=str(cfg.reward_noise_var))
+    fig = show_result(regrets=regret_result, errors=theta_result, label_name=label_name, feat_dist_label=cfg.feat_dist, 
+                      feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_noise_var))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
     
     out = vars(cfg)
