@@ -12,10 +12,12 @@ from datetime import datetime
 cfg = get_cfg()
 
 def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
-    assert type(dim) == int or type(dim) == tuple, "The type of 'dim' must be either int or list."
-    if not uniform_rng:
+    assert type(dim) == int or type(dim) == tuple, "The type of 'dim' must be either int or tuple."
+    
+    if uniform_rng is None:
         low, high = -1., 1.
     else:
+        assert len(uniform_rng) == 2, "The 'uniform_rng' must contain two elements: low and high."
         low, high = uniform_rng
         
     if type(dim) == int:
@@ -138,9 +140,6 @@ def rademacher(size:int):
 def subgaussian_noise(distribution:str, size:int, random_state:int=None, std:float=None):
     if random_state:
         np.random.seed(random_state)
-        
-    if std == 0.:
-        return np.zeros(size)
     
     if distribution == "gaussian":
         if std is None:

@@ -12,21 +12,22 @@ class ContextualBandit(ABC):
     
     
 class LinUCB(ContextualBandit):
-    def __init__(self, d, alpha, lbda=1.):
+    def __init__(self, d, alpha, lbda):
         self.alpha = alpha
         self.t = 0
         self.xty = np.zeros(d)
         self.Vinv = (1 / lbda) * np.identity(d)
+        self.theta_hat = np.zeros(d)
         
     def choose(self, x):
         # x: action set at each round (N, d)
         self.t += 1
         
         ## compute the ridge estimator
-        theta_hat = self.Vinv @ self.xty
+        self.theta_hat = self.Vinv @ self.xty
         
         ## compute the ucb scores for each arm
-        expected = x @ theta_hat # (N, ) theta_T @ x_t
+        expected = x @ self.theta_hat # (N, ) theta_T @ x_t
         width = np.sqrt(np.einsum("Ni, ij, Nj -> N", x, self.Vinv, x) * np.log(self.t)) # (N, ) widths
         ucb_scores = expected + (self.alpha * width) # (N, ) ucb score
         
@@ -34,7 +35,7 @@ class LinUCB(ContextualBandit):
         maximum = np.max(ucb_scores)
         argmax, = np.where(ucb_scores == maximum)
         
-        return np.random.choice(argmax), theta_hat
+        return np.random.choice(argmax)
     
     def update(self, x, r):
         # x: context of the chosen action (d, )
@@ -44,9 +45,9 @@ class LinUCB(ContextualBandit):
 
 class LineGreedy(LinUCB):
     ## epsilon greedy linear bandit
-    def __init__(self, d, alpha, lbda=1, epsilon=0.1):
+    def __init__(self, d, alpha, lbda, epsilon):
         super().__init__(d, alpha, lbda)
-        self.epsilon = epsilon        
+        self.epsilon = epsilon
         
     def choose(self, x):
         num_actions, _ = x.shape
@@ -68,7 +69,7 @@ class LineGreedy(LinUCB):
     
     
 class PartialLinUCB(LinUCB):
-    def __init__(self, d, num_actions, alpha, lbda=1):
+    def __init__(self, d, num_actions, alpha, lbda):
         super().__init__(d, alpha, lbda)
         self.num_actions = num_actions
         self.xty = np.zeros(d+num_actions)

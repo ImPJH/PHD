@@ -2,6 +2,7 @@
 *.sh
 *.zip
 *.pt
+*.txt
 
 **/__pycache__/
 mnist/
