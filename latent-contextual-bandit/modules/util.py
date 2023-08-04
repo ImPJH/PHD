@@ -2,14 +2,13 @@ import os
 import pickle
 import json
 import numpy as np
-from typing import Union
-from cfg import get_cfg
+from typing import Union, List, Tuple
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+import seaborn as sns
 from tqdm.auto import tqdm
 from datetime import datetime
 
-cfg = get_cfg()
 
 def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
     assert type(dim) == int or type(dim) == tuple, "The type of 'dim' must be either int or tuple."
@@ -24,8 +23,7 @@ def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
         size = dim
     else:
         dim1, dim2 = dim
-        size = dim1 * dim2
-    
+        size = dim1 * dim2    
     return np.random.uniform(low=low, high=high, size=size).reshape(dim)
 
 
@@ -51,20 +49,35 @@ def l2norm(v:np.ndarray):
     return np.sqrt(np.sum(v ** 2))
 
 
-def covariance_generator(d:int, distribution:str="gaussian", bound:float=None, uniform_rng:list=None):
-    if distribution == "gaussian":
-        rnd = np.random.randn(d, d)
-    elif distribution == "uniform":
-        rnd = generate_uniform(dim=(d, d), uniform_rng=uniform_rng)
+def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None, 
+                         variances:Union[list, np.ndarray]=None):
+    if independent:
+        if variances is None:
+            assert distribution is not None and distribution.lower() in ["gaussian", "uniform"], "If the variances are not given, you need to pass the distribution to sample them."
+            ## then variances are sampled randomly
+            if distribution == "gaussian":
+                variances = (np.random.randn(d)) ** 2
+            else:
+                variances = (generate_uniform(dim=d, uniform_rng=uniform_rng)) ** 2
+
+        mat = np.zeros(shape=(d, d))
+        for i in range(d):
+            mat[i, i] = variances[i]
     
-    ## make a symmetric matrix
-    sym = (rnd + rnd.T) / 2
-    ## make positive semi-definite and bound its maximum singular value
-    mat = sym @ sym.T
-    
-    if bound is not None:
-        mat *= (bound / np.linalg.norm(mat, 2))
-    
+    else:
+        assert distribution is not None and distribution.lower() in ["gaussian", "uniform"], f"If independent is {independent}, you need to pass the distribution to sample them."
+        if distribution == "gaussian":
+            rnd = np.random.randn(d, d)
+        elif distribution == "uniform":
+            rnd = generate_uniform(dim=(d, d), uniform_rng=uniform_rng)
+        
+        ## make a symmetric matrix
+        sym = (rnd + rnd.T) / 2
+        ## make positive semi-definite and bound its maximum singular value
+        mat = sym @ sym.T
+        if variances is not None:
+            for i in range(d):
+                mat[i, i] = variances[i]
     return mat
 
 
@@ -91,7 +104,6 @@ def make_diagonal(v:np.ndarray, dim:Union[int, tuple]):
         
     for i in range(rng):
         diag[i, i] = v[i]
-    
     return diag
 
 
@@ -127,9 +139,7 @@ def left_pseudo_inverse(A:np.ndarray):
     B_sig = np.zeros((k, d))
     for i in range(k):
         B_sig[i, i] = 1 / A_sig[i]
-    
     B = v_T.T @ B_sig @ u.T
-    
     return B
 
 
@@ -137,7 +147,7 @@ def rademacher(size:int):
     return 2 * np.random.randint(0, 2, size) - 1
 
 
-def subgaussian_noise(distribution:str, size:int, random_state:int=None, std:float=None):
+def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:int=None):
     if random_state:
         np.random.seed(random_state)
     
@@ -159,89 +169,99 @@ def subgaussian_noise(distribution:str, size:int, random_state:int=None, std:flo
     return noise
 
 
+def bounding(type:str, v:np.ndarray, bound:float, method:str=None):
+    if type == "param":
+        if l2norm(v) > bound:
+            v *= (bound / l2norm(v))
+    elif type == "feature":
+        assert method in ["scaling", "clipping"], f"If you're trying to bound {type}, the method should not be None."
+        if method == "scaling":
+            maxnorm = np.max([l2norm(item) for item in v])
+            v *= (bound / maxnorm)
+        else:
+            for i in range(v.shape[0]):
+                if l2norm(v[i]) > bound:
+                    v[i] *= (bound / l2norm(v[i]))
+    elif type == "mapping":
+        assert method in ["lower", "upper"], f"If you're trying to bound {type}, you need to specify the lower or the upper bound."
+        if method == "lower":
+            ## constrain the lower bound of the minimum singular value
+            u, sig, v_T = np.linalg.svd(v)
+            sig = sig - np.min(sig) + bound
+            sig_v = make_diagonal(sig, dim=v.shape)
+            v = u @ sig_v @ v_T
+        
+        if method == "upper":
+            ## constrain the upper bound of the spectral norm
+            v *= (bound / np.linalg.norm(v, 2))
+
+
 def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None, 
                     bound_method:str=None, uniform_rng:list=None, random_state:int=None):
+    assert feat_dist.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
-
-    assert feat_dist.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     
     if disjoint:
         if feat_dist.lower() == "gaussian":
             assert uniform_rng is None, f"If the distribution is {feat_dist}, variable range is not required."
             ## gaussian
-            feat = np.random.multivariate_normal(mean=np.zeros(dimension), cov=np.identity(dimension), size=size)
+            variances = np.ones(dimension)
+            cov = covariance_generator(d=dimension, independent=True, variances=variances)
+            feat = np.random.multivariate_normal(mean=np.zeros(dimension), cov=cov, size=size)
         else:
             ## uniform
             feat = generate_uniform(dim=(size, dimension), uniform_rng=uniform_rng)
     else:
         assert cov_dist is not None, f"If 'disjoint' is set to {disjoint}, it is required to specify the distribution to sample the covariance matrix."
         if feat_dist.lower() == "gaussian":
-            assert uniform_rng is None, f"If the distribution is {feat_dist}, variable range is not required."
             ## gaussian
-            cov = covariance_generator(dimension, distribution=cov_dist)
+            cov = covariance_generator(d=dimension, independent=False, distribution=cov_dist)
             feat = np.random.multivariate_normal(mean=np.zeros(dimension), cov=cov, size=size)
         else:
             ## uniform
             feat = generate_uniform(dim=(size, dimension), uniform_rng=uniform_rng)
             
             # Cholesky decomposition
-            pd = positive_definite_generator(dimension, distribution=cov_dist)
+            pd = positive_definite_generator(dimension=dimension, distribution=cov_dist)
             L = np.linalg.cholesky(pd)
             for i in range(size):
                 feat[i, :] = L @ feat[i, :]
             
     if bound is not None:
         assert bound_method in ["scaling", "clipping"], "Bounding method should either be 'scaling' or 'clipping'."
-        ## bound the L2 norm of each row vector
-        if bound_method == "scaling":
-            norms = [l2norm(feat[i, :]) for i in range(size)]
-            max_norm = np.max(norms)
-            for i in range(size):
-                feat[i, :] *= (bound / max_norm)
-        elif bound_method == "clipping":
-            for i in range(size):
-                norm = l2norm(feat[i, :])
-                if norm > bound: 
-                    feat[i, :] *= (bound / norm)                
-    
+        bounding(type="feature", v=feat, bound=bound, method=bound_method)
+        
     return feat
 
 
 def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound:float=None, upper_bound:float=None, uniform_rng:list=None, random_state:int=None):
+    assert distribution.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
-        
-    assert distribution.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     
     if distribution.lower() == "gaussian":
         assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
         mat =  np.random.randn(obs_dim, latent_dim)
     else:
         if uniform_rng is None:
-            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=(-np.sqrt(6/(obs_dim+latent_dim)), np.sqrt(6/(obs_dim+latent_dim))))
+            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=[-np.sqrt(2/latent_dim), np.sqrt(2/latent_dim)])
         else:
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=uniform_rng)
         
-    if lower_bound:
-        ## constrain the lower bound of the minimum singular value
-        u, sig, v_T = np.linalg.svd(mat)
-        sig = sig - np.min(sig) + lower_bound
-        sig_mat = make_diagonal(sig, dim=mat.shape)
-        mat = u @ sig_mat @ v_T
+    if lower_bound is not None:
+        bounding(type="mapping", v=mat, bound=lower_bound, method="lower")
     
-    if upper_bound:
+    if upper_bound is not None:
         ## constrain the upper bound of the spectral norm
-        max_singular = np.linalg.norm(mat, 2)
-        mat *= (upper_bound / max_singular)
-
+        bounding(type="mapping", v=mat, bound=upper_bound, method="upper")
     return mat
 
 
 def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=None, uniform_rng:list=None, random_state:int=None):
+    assert distribution.lower() in ["gaussian", "uniform"], "Parameter distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
-    assert distribution.lower() in ["gaussian", "uniform"], "Parameter distribution must be either 'gaussian' or 'uniform'."
     
     if disjoint:
         if distribution == "gaussian":
@@ -251,7 +271,6 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
             param = generate_uniform(dim=dimension, uniform_rng=uniform_rng)
     else:
         if distribution == "gaussian":
-            assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
             cov = covariance_generator(dimension, distribution=distribution)
             param = np.random.multivariate_normal(mean=np.zeros(dimension), cov=cov)
         else:
@@ -261,9 +280,8 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
             L = np.linalg.cholesky(pd)
             param = L @ param
         
-    if (bound is not None) and (l2norm(param) > bound): 
-        param *= (bound / l2norm(param))
-    
+    if bound is not None:
+        bounding(type="param", v=param, bound=bound)
     return param
 
 

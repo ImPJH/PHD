@@ -13,6 +13,8 @@ def get_cfg():
     parser.add_argument("--alphas", type=float, nargs="+")
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--agent_type", type=str)
+    parser.add_argument("--check_specs", action="store_true")
+    parser.add_argument("--check_param_error", action="store_true")
     
     parser.add_argument("--action_space_size", "-A", type=int, default=10000)
     parser.add_argument("--num_actions", "-N", type=int, nargs="+")
@@ -28,17 +30,19 @@ def get_cfg():
     parser.add_argument("--feat_disjoint", action="store_true")
     parser.add_argument("--feat_cov_dist", "-FCD", type=str, default=None)
     parser.add_argument("--feat_uniform_rng", "-FUR", type=float, default=None, nargs=2)
-    parser.add_argument("--latent_feature_bound", "-LFB", type=float, default=None)
+    
     parser.add_argument("--obs_feature_bound", "-OFB", type=float, default=None)
-    parser.add_argument("--bound_method", "-BM", type=str, choices=["scaling", "clipping"], default=None)
+    parser.add_argument("--latent_feature_bound", "-LFB", type=float, default=None)
+    parser.add_argument("--obs_bound_method", "-OBM", type=str, choices=["scaling", "clipping"], default=None)
+    parser.add_argument("--latent_bound_method", "-LBM", type=str, choices=["scaling", "clipping"], default=None)
     
     parser.add_argument("--map_dist", "-MD", type=str, default="uniform")
     parser.add_argument("--map_lower_bound", "-MLB", type=float, default=None)
     parser.add_argument("--map_upper_bound", "-MUB", type=float, default=None)
     parser.add_argument("--map_uniform_rng", "-MUR", type=float, default=None, nargs=2)
     
-    parser.add_argument("--context_var", "-CV", type=str, default=None)
-    parser.add_argument("--reward_noise_var", "-RNV", type=float, default=0.1)
+    parser.add_argument("--context_std", "-CS", type=str, default=None)
+    parser.add_argument("--reward_std", "-RNS", type=float, default=0.1)
     
     parser.add_argument("--param_dist", "-PD", type=str, default="uniform")
     parser.add_argument("--param_bound", "-PB", type=float, default=1.)

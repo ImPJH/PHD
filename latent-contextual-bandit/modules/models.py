@@ -33,8 +33,7 @@ class LinUCB(ContextualBandit):
         
         ## chose the argmax the ucb score
         maximum = np.max(ucb_scores)
-        argmax, = np.where(ucb_scores == maximum)
-        
+        argmax, = np.where(ucb_scores == maximum)        
         return np.random.choice(argmax)
     
     def update(self, x, r):
@@ -63,8 +62,7 @@ class LineGreedy(LinUCB):
             best_arm = np.random.choice(argmax)
         else:
             ## with epsilon probability, choose a random action
-            best_arm = np.random.randint(num_actions)
-            
+            best_arm = np.random.randint(num_actions)    
         return best_arm
     
     
