@@ -9,9 +9,9 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma}$"
 }
 
-def run_trials(agent_type:str, trials:int, alpha_list:list, action_list:list, lbda:float, epsilon:float, mode:str, horizon:int, 
-               latent:np.ndarray, num_visibles:int, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], 
-               noise_std:Tuple[float], feat_bound:float, feat_bound_method:str, check_param_error:bool, random_state:int, verbose:bool=False):
+def run_trials(mode:str, trials:int, alpha_list:list, action_list:list, lbda:float, epsilon:float, horizon:int, latent:np.ndarray, 
+               num_visibles:int, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+               feat_bound:float, feat_bound_method:str, check_param_error:bool, random_state:int, egreedy:bool=False, verbose:bool=False):
     assert len(alpha_list) == 1 or len(action_list) == 1, f"Either one of the alphas or num_actions must be one."
     
     obs_dim, _ = decoder.shape
@@ -26,13 +26,14 @@ def run_trials(agent_type:str, trials:int, alpha_list:list, action_list:list, lb
             regret_container = np.zeros(trials, dtype=object)
             error_container = np.zeros(trials, dtype=object)
             for trial in range(trials):
-                if agent_type.lower() == "linucb":
-                    agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
-                elif agent_type.lower() == "partial":
+                if mode == "full":
+                    if not egreedy:
+                        agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
+                    else:
+                        agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
+                else:                                                                                                                       
                     agent = PartialLinUCB(d=obs_dim, num_actions=arms, alpha=alpha, lbda=lbda)
-                else:
-                    agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)
-                random_state += int(10000000*alpha) + (100000*trial)
+                random_state += (1000000*trial) + int(999999*alpha)
                 regrets, errors = run(mode=mode, agent=agent, horizon=horizon, num_actions=arms, latent=latent, num_visibles=num_visibles, 
                                       decoder=decoder, reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
                                       feat_bound_method=feat_bound_method, check_param_error=check_param_error, random_state=random_state, verbose=verbose)
