@@ -231,7 +231,6 @@ def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_d
     if bound is not None:
         assert bound_method in ["scaling", "clipping"], "Bounding method should either be 'scaling' or 'clipping'."
         bounding(type="feature", v=feat, bound=bound, method=bound_method)
-        
     return feat
 
 
@@ -250,6 +249,7 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=uniform_rng)
         
     if lower_bound is not None:
+        ## constrain the lower bound of the spectral norm
         bounding(type="mapping", v=mat, bound=lower_bound, method="lower")
     
     if upper_bound is not None:
@@ -301,5 +301,5 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
     elif filetype == "json":
         with open(f"{path}/{fname}.json", "w") as f:
             json.dump(result, f)
-    
+
     print("Result is Saved Completely!")
