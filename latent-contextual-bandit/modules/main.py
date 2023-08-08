@@ -62,7 +62,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, n
     if mode == "partial":
         assert action_space_size == num_actions, f"If the mode is {mode}, the action space must be fixed"
         inherent_rewards = param_generator(dimension=num_actions, distribution=cfg.param_dist, disjoint=cfg.param_disjoint,
-                                           bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state)
+                                           bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=((random_state+10)//3))
     else:
         inherent_rewards = 0.
     
@@ -76,7 +76,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, n
     
     for t in bar:
         if random_state is not None:
-            random_state += t
+            random_state += 1
         idx = np.random.choice(np.arange(action_space_size), size=num_actions, replace=False)
         latent_set = latent[idx, :]
         if mode == "partial":
@@ -97,7 +97,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, n
         reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=num_actions, std=reward_noise_std, random_state=random_state)
         expected_reward = latent_set @ reward_params + inherent_rewards
         if t == 0:
-            print(f"Mode: {mode}\tFixed arm set: {(action_space_size == num_actions)}\tReward range: [{np.amin(expected_reward):.5f}, {np.amax(expected_reward):.5f}]")
+            print(f"Mode : {mode}\tFixed arm set : {(action_space_size == num_actions)}\tReward range : [{np.amin(expected_reward):.5f}, {np.amax(expected_reward):.5f}]")
         realized_reward = expected_reward + reward_noise
         optimal_arm = np.argmax(expected_reward)
         optimal_reward = expected_reward[optimal_arm]
@@ -140,6 +140,7 @@ def show_result(result:dict, label_name:str, feat_dist_label:str, feat_disjoint:
                     ax[i][j].set_ylabel(r"$R_t$")
                     ax[i][j].set_title("Regret")
                 else:
+                    ax[i][j].set_ylim(-0.1, None)
                     ax[i][j].set_ylabel(r"${\Vert \hat{\theta}_t - \theta_*\Vert}_2$")
                     ax[i][j].set_title(r"Parameter Empirical Error")
                 ax[i][j].grid(True)
@@ -178,9 +179,6 @@ if __name__ == "__main__":
     RESULT_PATH = f"./results/{cfg.mode}/"
     FIGURE_PATH = f"./figures/{cfg.mode}/"
     
-    if cfg.check_param_error:
-        assert cfg.mode == "full" and d == k, "You can check the empirical error of the parameter only if the mode is full and the latent dimension and observable dimension are equal."
-    
     ## generate the latent feature
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint, 
                         cov_dist=cfg.feat_cov_dist, bound=cfg.latent_feature_bound, bound_method=cfg.latent_bound_method, 
@@ -195,11 +193,12 @@ if __name__ == "__main__":
                                  uniform_rng=cfg.param_uniform_rng, random_state=GEN_SEED+2)
     
     if cfg.check_specs:
-        print(f"Shape of the latent feature matrix: {Z.shape}")
-        print(f"The maximum norm of the latent features: {np.amax([l2norm(latent) for latent in Z]):.4f}")
-        print(f"Shape of the decoder mapping: {A.shape}")
-        print(f"L2 norm of the true theta: {l2norm(true_mu):.4f}")
-        
+        print(f"Shape of the latent feature matrix : {Z.shape}")
+        print(f"The maximum norm of the latent features : {np.amax([l2norm(latent) for latent in Z]):.4f}")
+        print(f"Shape of the decoder mapping : {A.shape}")
+        print(f"L2 norm of the true theta : {l2norm(true_mu):.4f}")
+    
+    ## run an experiment
     result, label_name = run_trials(agent_type=cfg.agent_type, trials=cfg.trials, alpha_list=ALPHAS, action_list=num_actions, lbda=cfg.lbda, epsilon=cfg.epsilon, 
                                     mode=cfg.mode, horizon=T, latent=Z, num_visibles=m, decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), 
                                     noise_std=(context_std, cfg.reward_std), feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=RUN_SEED)
