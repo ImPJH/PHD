@@ -16,20 +16,23 @@ if __name__ == "__main__":
     
     d = 12
     k = 7
-    M = 50000
+    M = 20
     N = 20
     T = 30000
     feature_bound = 1.
     mapping_bound = 1.
     param_bound = 1.
     
-    seeds = get_primes(start=1100, end=2000)
+    # seeds = get_primes(start=1100, end=2000)
+    seeds = [241, 251, 257, 263, 349, 379, 383, 397, 457, 463, 503, 541, 547, 463, 457, 397, 383, 643, 691, 
+             719, 751, 773, 787, 829, 881, 907, 977, 1009, 1021, 1033, 1039, 1049, 1117, 1123, 1433, 1471, 
+             1481, 1483, 1487, 1499, 1567, 1583, 1609, 1663, 1693, 1699, 1777, 1801, 1871, 1873, 1879, 1889, 1973, 1987, 1997]
 
     feat_dist = "gaussian"
     disjoint = True
     reward_std = 0.1
     context_std = [0, 1 / np.sqrt(T)]
-    alphas = [0., 0.001, 0.01, 0.05, 0.1]
+    alphas = [0.3, 0.5, 0.7, 0.9]
     trials = 1
     bound_method = "scaling"
     if M == N:
@@ -52,7 +55,7 @@ if __name__ == "__main__":
         for ctx_std in context_std:
             result = dict()
             for alpha in alphas:
-                print(f"alpha={alpha}\tctx_std={ctx_std:.5f}")
+                print(f"alpha = {alpha}\tctx_std = {ctx_std:.5f}\tArms : {fixed_flag}")
                 regret_container = np.zeros(trials, dtype=object)
                 error_container = np.zeros(trials, dtype=object)
                 for trial in range(trials):
@@ -61,7 +64,10 @@ if __name__ == "__main__":
                     agent = LinUCB(d=d, alpha=alpha, lbda=1.)
                     for t in tqdm(range(T)):
                         seed_ = seed + (100000 * trial) + t + int(1000000*alpha)
-                        idx = np.random.choice(np.arange(M), size=N, replace=False)
+                        if M == N:
+                            idx = np.arange(M)
+                        else:
+                            idx = np.random.choice(np.arange(M), size=N, replace=False)
                         latent_set = Z[idx, :]
 
                         ## sample the context noise and generate the observable feature
@@ -72,7 +78,7 @@ if __name__ == "__main__":
                         reward_noise = subgaussian_noise(distribution="gaussian", size=N, std=reward_std, random_state=seed_+1)
                         expected_reward = latent_set @ true_mu
                         if t == 0:
-                            print(f"Reward range: [{np.min(expected_reward):.5f}, {np.max(expected_reward):.5f}]")
+                            print(f"Reward range : [{np.min(expected_reward):.5f}, {np.max(expected_reward):.5f}]")
                         true_reward = expected_reward + reward_noise
                         optimal_arm = np.argmax(expected_reward)
                         optimal_reward = expected_reward[optimal_arm]
@@ -135,6 +141,6 @@ if __name__ == "__main__":
 
         fig.tight_layout(rect=[0, 0, 1, 0.95])
         fig.suptitle(f"$Z${FEAT_DICT[(feat_dist, disjoint)]} seed = {seed}, $Z$ bound method = {bound_method}")
-        fname = f"feat_{feat_dist}_disjoint_{disjoint}_seed_{seed}_bound_{bound_method}_arms_{fixed_flag}"
+        fname = f"feat_{feat_dist}_disjoint_{disjoint}_seed_{seed}_bound_{bound_method}_arms_{fixed_flag}_again"
         save_plot(fig, path='seed_comparison', fname=fname)
         plt.close('all')

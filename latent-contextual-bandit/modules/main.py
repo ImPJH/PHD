@@ -15,7 +15,8 @@ def run_trials(mode:str, trials:int, alpha_list:list, action_list:list, lbda:flo
     assert len(alpha_list) == 1 or len(action_list) == 1, f"Either one of the alphas or num_actions must be one."
     
     obs_dim, _ = decoder.shape
-    result = dict()
+    regret_result = dict()
+    error_result = dict()
     
     for alpha in alpha_list:
         for arms in action_list:
@@ -41,13 +42,14 @@ def run_trials(mode:str, trials:int, alpha_list:list, action_list:list, lbda:flo
                 key = arms
             else:
                 key = alpha
-            result[key] = (regret_container, error_container)
+            regret_result[key] = regret_container
+            error_result[key] = error_container
 
     if len(alpha_list) == 1:
         label_name = r"$\vert \mathcal{A}\vert$"
     else:
         label_name = r"$\alpha$"
-    return result, label_name
+    return regret_result, error_result, label_name
 
 
 def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, num_actions:int, latent:np.ndarray, num_visibles:int, decoder:np.ndarray, 
@@ -67,7 +69,10 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, n
         inherent_rewards = 0.
     
     regrets = np.zeros(horizon, dtype=float)
-    errors = np.zeros(horizon, dtype=float)
+    if mode == "full":
+        errors = np.zeros(horizon, dtype=float)
+    else:
+        errors = None
 
     if not verbose:
         bar = tqdm(range(horizon))
@@ -109,7 +114,10 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, n
         
         ## compute the regret and errors, if necessary
         regrets[t] = optimal_reward - expected_reward[chosen_arm]
-        errors[t] = l2norm(theta_star - agent.theta_hat)
+        try:
+            errors[t] = l2norm(theta_star - agent.theta_hat)
+        except:
+            pass
         
         if verbose: 
             print(f"round {t+1}\toptimal action : {optimal_arm}\toptimal reward : {optimal_reward:.3f}")
@@ -121,30 +129,79 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, n
     return np.cumsum(regrets), errors
 
 
-def show_result(result:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)):
-    NROWS, NCOLS = 2, 2
-    fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
-    for i in range(NROWS):
-        for j in range(NROWS):
-            for key in result:
-                item = result[key][i]
-                if j == 0:
-                    ax[i][j].plot(np.mean(item, axis=0), label=f"{label_name}={key}")
-                else:
-                    mean = np.mean(item, axis=0)
-                    std = np.std(item, axis=0, ddof=1)
-                    ax[i][j].plot(mean, label=f"alpha={key}")
-                    ax[i][j].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
-                ax[i][j].set_xlabel("Round")
-                if i == 0:
-                    ax[i][j].set_ylabel(r"$R_t$")
-                    ax[i][j].set_title("Regret")
-                else:
-                    ax[i][j].set_ylim(-0.1, None)
-                    ax[i][j].set_ylabel(r"${\Vert \hat{\theta}_t - \theta_*\Vert}_2$")
-                    ax[i][j].set_title(r"Parameter Empirical Error")
-                ax[i][j].grid(True)
-                ax[i][j].legend()
+def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, 
+                context_label:str, reward_label:str, figsize:tuple=(14, 10)):
+    if not all([(array == None).all() for array in errors.values()]):
+        NROWS, NCOLS = 2, 2
+        fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
+        
+        for key in regrets:
+            item = regrets[key]
+            ax[0][0].plot(np.mean(item, axis=0), label=f"{label_name}={key}")
+        ax[0][0].grid(True)
+        ax[0][0].set_xlabel("Round")
+        ax[0][0].set_ylabel(r"$R_t$")
+        ax[0][0].set_title("Regret")
+        ax[0][0].legend()
+        
+        for key in regrets:
+            item = regrets[key]
+            mean = np.mean(item, axis=0)
+            std = np.std(item, axis=0, ddof=1)
+            ax[0][1].plot(mean, label=f"{label_name}={key}")
+            ax[0][1].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
+        ax[0][1].grid(True)
+        ax[0][1].set_xlabel("Round")
+        ax[0][1].set_ylabel(r"$R_t$")
+        ax[0][1].set_title("Regret")
+        ax[0][1].legend()
+        
+        for key in errors:
+            item = errors[key]
+            ax[1][0].plot(np.mean(item, axis=0), label=f"{label_name}={key}")
+        ax[1][0].grid(True)
+        ax[1][0].set_xlabel("Round")
+        ax[1][0].set_ylabel(r"${\Vert \hat{\theta}_t - \theta_*\Vert}_2$")
+        ax[1][0].set_title("Parameter Empirical Error")
+        ax[1][0].legend()
+        
+        for key in errors:
+            item = errors[key]
+            mean = np.mean(item, axis=0)
+            std = np.std(item, axis=0, ddof=1)
+            ax[1][1].plot(mean, label=f"{label_name}={key}")
+            ax[1][1].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
+        ax[1][1].grid(True)
+        ax[1][1].set_xlabel("Round")
+        ax[1][1].set_ylabel(r"${\Vert \hat{\theta}_t - \theta_*\Vert}_2$")
+        ax[1][1].set_title("Parameter Empirical Error")
+        ax[1][1].legend()
+
+    else:
+        NROWS, NCOLS = 1, 2
+        fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=(14, 5))
+
+        for key in regrets:
+            item = regrets[key]
+            ax[0].plot(np.mean(item, axis=0), label=f"{label_name}={key}")
+        ax[0].grid(True)
+        ax[0].set_xlabel("Round")
+        ax[0].set_ylabel(r"$R_t$")
+        ax[0].set_title("Regret")
+        ax[0].legend()
+        
+        for key in regrets:
+            item = regrets[key]
+            mean = np.mean(item, axis=0)
+            std = np.std(item, axis=0, ddof=1)
+            ax[1].plot(mean, label=f"{label_name}={key}")
+            ax[1].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
+        ax[1].grid(True)
+        ax[1].set_xlabel("Round")
+        ax[1].set_ylabel(r"$R_t$")
+        ax[1].set_title("Regret")
+        ax[1].legend()
+        
     
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, $Z$ bound={cfg.latent_bound_method}, $X$ bound={cfg.obs_bound_method}")    
@@ -190,7 +247,7 @@ if __name__ == "__main__":
     
     ## generate the true parameter
     true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
-                                 uniform_rng=cfg.param_uniform_rng, random_state=GEN_SEED+2)
+                              uniform_rng=cfg.param_uniform_rng, random_state=GEN_SEED+2)
     
     if cfg.check_specs:
         print(f"Shape of the latent feature matrix : {Z.shape}")
@@ -199,13 +256,13 @@ if __name__ == "__main__":
         print(f"L2 norm of the true theta : {l2norm(true_mu):.4f}")
     
     ## run an experiment
-    result, label_name = run_trials(agent_type=cfg.agent_type, trials=cfg.trials, alpha_list=ALPHAS, action_list=num_actions, lbda=cfg.lbda, epsilon=cfg.epsilon, 
-                                    mode=cfg.mode, horizon=T, latent=Z, num_visibles=m, decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), 
-                                    noise_std=(context_std, cfg.reward_std), feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=RUN_SEED)
+    regrets, errors, label_name = run_trials(mode=cfg.mode, trials=cfg.trials, alpha_list=ALPHAS, action_list=num_actions, lbda=cfg.lbda, epsilon=cfg.epsilon, 
+                                             horizon=T, latent=Z, num_visibles=m, decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), 
+                                             noise_std=(context_std, cfg.reward_std), feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=RUN_SEED)
     
     ## save the results
     fname = f"experiment_result_{datetime.now()}_latent_{cfg.latent_bound_method}_obs_{cfg.obs_bound_method}"
-    fig = show_result(result=result, label_name=label_name, feat_dist_label=cfg.feat_dist, feat_disjoint=cfg.feat_disjoint, 
-                      context_label=context_label, reward_label=str(cfg.reward_std))
+    fig = show_result(regrets=regrets, errors=errors, label_name=label_name, feat_dist_label=cfg.feat_dist, 
+                      feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
     save_result(result=vars(cfg), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
