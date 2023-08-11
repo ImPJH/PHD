@@ -3,6 +3,7 @@
 *.zip
 *.pt
 *.txt
+.DS_Store
 
 **/__pycache__/
 mnist/
