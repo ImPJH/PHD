@@ -4,6 +4,13 @@ from prime import get_primes
 from cfg import get_cfg
 import warnings
 
+FEAT_DICT = {
+    ("gaussian", True): r"$\sim N(0, I_k)$",
+    ("gaussian", False): r"$\sim N(0, \Sigma_k)$",
+    ("uniform", True): r"$\sim Unif_{I_k}$",
+    ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
+}
+
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=UserWarning)
     
@@ -16,8 +23,10 @@ if __name__ == "__main__":
     mapping_bound = 1.
     param_bound = 1.
     
-    seeds = get_primes(start=600, end=2000)
+    seeds = get_primes(start=1100, end=2000)
 
+    feat_dist = "gaussian"
+    disjoint = True
     reward_std = 0.1
     context_std = [0, 1 / np.sqrt(T)]
     alphas = [0., 0.001, 0.01, 0.05, 0.1]
@@ -30,7 +39,7 @@ if __name__ == "__main__":
 
     for seed in seeds:
         print(f"seed = {seed}")
-        Z = feature_sampler(dimension=k, feat_dist="gaussian", size=M, disjoint=True, 
+        Z = feature_sampler(dimension=k, feat_dist=feat_dist, size=M, disjoint=disjoint, cov_dist="gaussian",
                             bound=feature_bound, bound_method=bound_method, random_state=seed)
         A = mapping_generator(latent_dim=k, obs_dim=d, distribution="uniform", 
                               upper_bound=mapping_bound, random_state=(seed*11)//3)
@@ -125,6 +134,7 @@ if __name__ == "__main__":
             ax[1][1].legend()
 
         fig.tight_layout(rect=[0, 0, 1, 0.95])
-        fig.suptitle(f"seed = {seed}, $Z$ bound method = {bound_method}")
-        fname = f"seed_{seed}_bound_{bound_method}_arms_{fixed_flag}"
+        fig.suptitle(f"$Z${FEAT_DICT[(feat_dist, disjoint)]} seed = {seed}, $Z$ bound method = {bound_method}")
+        fname = f"feat_{feat_dist}_disjoint_{disjoint}_seed_{seed}_bound_{bound_method}_arms_{fixed_flag}"
         save_plot(fig, path='seed_comparison', fname=fname)
+        plt.close('all')
