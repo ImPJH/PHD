@@ -21,7 +21,7 @@ def get_cfg():
     parser.add_argument("--latent_dim", "-k", type=int, default=7)
     parser.add_argument("--num_visibles", "-m", type=int, default=None)
     parser.add_argument("--horizon", "-T", type=int, default=10000)
-    parser.add_argument("--seed", "-S", type=int, default=[None, None], nargs=2)
+    parser.add_argument("--seed", "-S", type=int, default=None)
     parser.add_argument("--lbda", "-L", type=float, default=1.)
     parser.add_argument("--epsilon", "-E", type=float, default=0.1)
     
