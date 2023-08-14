@@ -204,7 +204,6 @@ if __name__ == "__main__":
     else:
         context_std = float(cfg.context_std)
         context_label = cfg.context_std
-    print(f"Context std = {context_std}")
     
     RESULT_PATH = f"./results/{cfg.mode}/"
     FIGURE_PATH = f"./figures/{cfg.mode}/"
@@ -227,9 +226,10 @@ if __name__ == "__main__":
         true_mu = true_mu[:m]   # (k, ) -> (m, )
     
     if cfg.check_specs:
+        print(f"Context std = {context_std},\tSEED = {SEED}")
         print(f"Shape of the latent feature matrix : {Z.shape}")
         print(f"The maximum norm of the latent features : {np.amax([l2norm(latent) for latent in Z]):.4f}")
-        print(f"Shape of the decoder mapping : {A.shape}\tNumber of reward parameters : {true_mu.shape[0]}")
+        print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
         print(f"L2 norm of the true theta : {l2norm(true_mu):.4f}")
     
     ## run an experiment
