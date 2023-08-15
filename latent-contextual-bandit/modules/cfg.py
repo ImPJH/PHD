@@ -7,7 +7,7 @@ def tuple_type(inputs):
 def get_cfg():
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--tqdm", action="store_true")
+    parser.add_argument("--seed_mode", action="store_true")
     parser.add_argument("--mode", type=str, choices=['full', 'partial'])
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--alphas", type=float, nargs="+")
@@ -15,7 +15,7 @@ def get_cfg():
     parser.add_argument("--agent_type", type=str)
     parser.add_argument("--check_specs", action="store_true")
     
-    parser.add_argument("--action_space_size", "-A", type=int, default=10000)
+    parser.add_argument("--action_spaces", "-A", type=int, nargs="+")
     parser.add_argument("--num_actions", "-N", type=int, nargs="+")
     parser.add_argument("--obs_dim", "-d", type=int, default=10)
     parser.add_argument("--latent_dim", "-k", type=int, default=7)

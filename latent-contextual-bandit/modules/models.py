@@ -49,7 +49,7 @@ class LineGreedy(LinUCB):
         self.epsilon = epsilon
         
     def choose(self, x):
-        num_actions, _ = x.shape
+        arms, _ = x.shape
         theta_hat = self.Vinv @ self.xty
         expected = x @ theta_hat
         
@@ -62,13 +62,13 @@ class LineGreedy(LinUCB):
             best_arm = np.random.choice(argmax)
         else:
             ## with epsilon probability, choose a random action
-            best_arm = np.random.randint(num_actions)    
+            best_arm = np.random.randint(arms)    
         return best_arm
     
     
 class PartialLinUCB(LinUCB):
-    def __init__(self, d, num_actions, alpha, lbda):
+    def __init__(self, d, arms, alpha, lbda):
         super().__init__(d, alpha, lbda)
-        self.num_actions = num_actions
-        self.xty = np.zeros(d+num_actions)
-        self.Vinv = (1 / lbda) * np.identity(d+num_actions)
+        self.arms = arms
+        self.xty = np.zeros(d+arms)
+        self.Vinv = (1 / lbda) * np.identity(d+arms)
