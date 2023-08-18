@@ -25,7 +25,7 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
                 agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
         else:                                                                                                                       
             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
-        random_state_ = random_state + (999999*trial) + int(1000000*alpha) + (1000001*arms)
+        random_state_ = random_state + (100000*trial) + int(99999*alpha) + (100001*arms)
         regrets, errors = run(mode=mode, agent=agent, horizon=horizon, arms=arms, latent=latent, decoder=decoder, 
                               reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
                               feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
@@ -35,8 +35,9 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
     return regret_container, error_container
 
 
-def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, arms:int, latent:np.ndarray, decoder:np.ndarray, 
-        reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
+def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, arms:int, latent:np.ndarray, 
+        decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+        feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
     action_size, _ = latent.shape
     obs_dim, _ = decoder.shape
     context_noise_dist, reward_noise_dist = noise_dist
@@ -248,7 +249,7 @@ if __name__ == "__main__":
     else:
         label_name = r"$\alpha$"
     
-    fname = f"experiment_result_{datetime.now()}_latent_{cfg.latent_bound_method}_obs_{cfg.obs_bound_method}_seed_{SEED}"
+    fname = f"result_mode_{cfg.mode}_seed_{SEED}_latent_{cfg.latent_bound_method}_obs_{cfg.obs_bound_method}"
     fig = show_result(regrets=regret_results, errors=error_results, label_name=label_name, feat_dist_label=cfg.feat_dist, 
                       feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
