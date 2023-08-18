@@ -25,7 +25,7 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
                 agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
         else:                                                                                                                       
             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
-        random_state_ = random_state + (100000*trial) + int(99999*alpha) + (100001*arms)
+        random_state_ = random_state + (111111*(trial+1)) + int(100000*alpha) + (99999*arms)
         regrets, errors = run(mode=mode, agent=agent, horizon=horizon, arms=arms, latent=latent, decoder=decoder, 
                               reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
                               feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
@@ -68,10 +68,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
         if random_state is not None:
             random_state_ = random_state + t
             
-        if action_size > arms:
-            idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
-        else:
-            idx = np.arange(arms)
+        idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
         latent_set, mapped_set = latent[idx, :], observe_space[idx, :]
         
         ## sample the context noise and generate the observable features
@@ -171,7 +168,7 @@ if __name__ == "__main__":
     cfg = get_cfg()
     
     ## hyper-parameters
-    action_spaces = cfg.action_spaces # List[int]
+    action_spaces = cfg.action_spaces # int
     num_actions = cfg.num_actions # List[int]
     d = cfg.obs_dim
     k = cfg.latent_dim
@@ -180,7 +177,7 @@ if __name__ == "__main__":
     SEED = cfg.seed
     ALPHAS = cfg.alphas
     
-    if (np.array(action_spaces) == np.array(num_actions)).all():
+    if cfg.fixed:
         fixed_flag = "fixed"
     else:
         fixed_flag = "unfixed"
@@ -200,29 +197,31 @@ if __name__ == "__main__":
         RESULT_PATH = f"./results/{cfg.mode}/{fixed_flag}/"
         FIGURE_PATH = f"./figures/{cfg.mode}/{fixed_flag}/"
     
+    ## generate the latent feature
+    Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_spaces, disjoint=cfg.feat_disjoint, 
+                        cov_dist=cfg.feat_cov_dist, bound=cfg.latent_feature_bound, bound_method=cfg.latent_bound_method, 
+                        uniform_rng=cfg.feat_uniform_rng, random_state=SEED)
+    
+    ## generate the decoder mapping
+    A = mapping_generator(latent_dim=k, obs_dim=d, distribution=cfg.map_dist, lower_bound=cfg.map_lower_bound, 
+                          upper_bound=cfg.map_upper_bound, uniform_rng=cfg.map_uniform_rng, random_state=SEED+1)
+    
+    ## generate the true parameter -> corresponds to "mu"
+    true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
+                              uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    
+    if cfg.mode == "partial":
+        Z = Z[:, :m]            # (M, k) -> (M, m)
+        A = A[:, :m]            # (d, k) -> (d, m)
+        true_mu = true_mu[:m]   # (k, ) -> (m, )
+
     regret_results = dict()
     error_results = dict()
-    for action_size, arms in zip(action_spaces, num_actions):
-        assert action_size >= arms, "The cardinality of the entire action space must be larger than the number of actions."
+    for arms in num_actions:
         assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
-        
-        ## generate the latent feature
-        Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_size, disjoint=cfg.feat_disjoint, 
-                            cov_dist=cfg.feat_cov_dist, bound=cfg.latent_feature_bound, bound_method=cfg.latent_bound_method, 
-                            uniform_rng=cfg.feat_uniform_rng, random_state=(SEED*11)//3)
-        
-        ## generate the decoder mapping
-        A = mapping_generator(latent_dim=k, obs_dim=d, distribution=cfg.map_dist, lower_bound=cfg.map_lower_bound,
-                            upper_bound=cfg.map_upper_bound, uniform_rng=cfg.map_uniform_rng, random_state=((SEED*11)//3)+1)
-        
-        ## generate the true parameter -> corresponds to "mu"
-        true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
-                                  uniform_rng=cfg.param_uniform_rng, random_state=((SEED*11)//3)+2)
-        
-        if cfg.mode == "partial":
-            Z = Z[:, :m]            # (M, k) -> (M, m)
-            A = A[:, :m]            # (d, k) -> (d, m)
-            true_mu = true_mu[:m]   # (k, ) -> (m, )
+        if cfg.fixed:
+            idx = np.random.choice(np.arange(action_spaces), size=num_actions, replace=False)
+            Z = Z[idx, :]
         
         if cfg.check_specs:
             print(f"Context std = {context_std:.6f}, SEED = {SEED}")
@@ -245,7 +244,7 @@ if __name__ == "__main__":
     
     ## save the results        
     if len(ALPHAS) == 1:
-        label_name = r"$\vert \mathcal{A}\vert$"
+        label_name = r"$\vert \mathcal{A}_t\vert$"
     else:
         label_name = r"$\alpha$"
     
