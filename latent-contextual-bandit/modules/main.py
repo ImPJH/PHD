@@ -220,6 +220,7 @@ if __name__ == "__main__":
     for arms in num_actions:
         assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
         if fixed_flag == "fixed":
+            np.random.seed(SEED)
             idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
             latent = Z[idx, :]
         else:
