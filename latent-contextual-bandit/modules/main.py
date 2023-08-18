@@ -177,7 +177,7 @@ if __name__ == "__main__":
     SEED = cfg.seed
     ALPHAS = cfg.alphas
     
-    if cfg.fixed:
+    if cfg.fixed or cfg.mode == "partial":
         fixed_flag = "fixed"
     else:
         fixed_flag = "unfixed"
@@ -219,9 +219,11 @@ if __name__ == "__main__":
     error_results = dict()
     for arms in num_actions:
         assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
-        if cfg.fixed:
-            idx = np.random.choice(np.arange(action_spaces), size=num_actions, replace=False)
-            Z = Z[idx, :]
+        if fixed_flag == "fixed":
+            idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
+            latent = Z[idx, :]
+        else:
+            latent = Z
         
         if cfg.check_specs:
             print(f"Context std = {context_std:.6f}, SEED = {SEED}")
@@ -232,7 +234,7 @@ if __name__ == "__main__":
         
         ## run an experiment
         for alpha in ALPHAS:
-            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=Z, 
+            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
                                          decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
                                          feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
             if len(ALPHAS) == 1:

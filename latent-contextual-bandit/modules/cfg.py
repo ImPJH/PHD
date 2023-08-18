@@ -16,7 +16,7 @@ def get_cfg():
     parser.add_argument("--check_specs", action="store_true")
     parser.add_argument("--fixed", action="store_true")
     
-    parser.add_argument("--action_spaces", "-A", type=int, nargs="+")
+    parser.add_argument("--action_spaces", "-A", type=int, default=10000)
     parser.add_argument("--num_actions", "-N", type=int, nargs="+")
     parser.add_argument("--obs_dim", "-d", type=int, default=10)
     parser.add_argument("--latent_dim", "-k", type=int, default=7)
