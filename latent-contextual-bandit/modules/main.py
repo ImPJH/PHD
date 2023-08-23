@@ -10,6 +10,13 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
+PATH_DICT = {
+    ("full", "fixed"): "full/fixed/",
+    ("full", "unfixed"): "full/unfixed/",
+    ("partial", "arms"): "partial/arms/",
+    ("partial", "alphas"): "partial/alpha/"
+}
+
 def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, 
                latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
                feat_bound:float, feat_bound_method:str, random_state:int, egreedy:bool=False, verbose:bool=False):
@@ -50,7 +57,6 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
     true_theta = decoder_inv.T @ reward_params  # (d, m) @ (m, ) -> (d, )
 
     if mode == "partial":
-        assert action_size == arms, f"If the mode is '{mode}', the action space must be fixed"
         inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint,
                                            bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state)
         true_theta = np.concatenate([true_theta, inherent_rewards], axis=0) # (d, ) -> (d+N, )
@@ -179,10 +185,20 @@ if __name__ == "__main__":
     SEED = cfg.seed
     ALPHAS = cfg.alphas
     
-    if cfg.fixed or cfg.mode == "partial":
-        fixed_flag = "fixed"
-    else:
-        fixed_flag = "unfixed"
+    if cfg.mode == "full":
+        if cfg.fixed:
+            path_flag = "fixed"
+            run_flag = "fixed"
+        else:
+            path_flag = "unfixed"
+            run_flag = "unfixed"
+            
+    if cfg.mode == "partial":
+        run_flag = "fixed"
+        if len(num_actions) > 1:
+            path_flag = "arms"
+        if len(ALPHAS) > 1:
+            path_flag = "alphas"
     
     if "T" in cfg.context_std:
         power = cfg.context_std.split("T")[-1]
@@ -193,11 +209,11 @@ if __name__ == "__main__":
         context_label = cfg.context_std
     
     if cfg.seed_mode:
-        RESULT_PATH = f"./seed_comparison/results/{cfg.mode}/{fixed_flag}/"
-        FIGURE_PATH = f"./seed_comparison/figures/{cfg.mode}/{fixed_flag}/"
+        RESULT_PATH = f"./seed_comparison/results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"./seed_comparison/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     else:
-        RESULT_PATH = f"./results/{cfg.mode}/{fixed_flag}/"
-        FIGURE_PATH = f"./figures/{cfg.mode}/{fixed_flag}/"
+        RESULT_PATH = f"./results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"./figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     
     ## generate the latent feature
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_spaces, disjoint=cfg.feat_disjoint, 
@@ -221,7 +237,7 @@ if __name__ == "__main__":
     error_results = dict()
     for arms in num_actions:
         assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
-        if fixed_flag == "fixed":
+        if run_flag == "fixed":
             np.random.seed(SEED)
             idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
             latent = Z[idx, :]
