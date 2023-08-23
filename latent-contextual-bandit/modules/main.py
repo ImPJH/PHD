@@ -1,6 +1,7 @@
 from cfg import get_cfg
 from models import *
 from util import *
+from multiprocessing import Pool
 
 FEAT_DICT = {
     ("gaussian", True): r"$\sim N(0, I_k)$",
@@ -25,7 +26,7 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
                 agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
         else:                                                                                                                       
             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
-        random_state_ = random_state + (111111*(trial+1)) + int(100000*alpha) + (99999*arms)
+        random_state_ = random_state + (10000000*(trial+1)) + int(1000000*alpha) + (100000*arms)
         regrets, errors = run(mode=mode, agent=agent, horizon=horizon, arms=arms, latent=latent, decoder=decoder, 
                               reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
                               feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
@@ -67,6 +68,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
     for t in bar:
         if random_state is not None:
             random_state_ = random_state + t
+            np.random.seed(random_state_)
             
         idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
         latent_set, mapped_set = latent[idx, :], observe_space[idx, :]
@@ -231,13 +233,14 @@ if __name__ == "__main__":
             print(f"Shape of the latent feature matrix : {latent.shape}")
             print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in latent]):.4f}")
             print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
-            print(f"L2 norm of the true theta : {l2norm(true_mu):.4f}")
+            print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
         
         ## run an experiment
         for alpha in ALPHAS:
             regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
                                          decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
                                          feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
+            
             if len(ALPHAS) == 1:
                 key = arms
             elif len(num_actions) == 1:
