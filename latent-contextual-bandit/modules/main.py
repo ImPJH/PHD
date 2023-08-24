@@ -10,6 +10,8 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
+MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
+
 PATH_DICT = {
     ("full", "fixed"): "full/fixed/",
     ("full", "unfixed"): "full/unfixed/",
@@ -209,11 +211,11 @@ if __name__ == "__main__":
         context_label = cfg.context_std
     
     if cfg.seed_mode:
-        RESULT_PATH = f"./seed_comparison/results/{PATH_DICT[(cfg.mode, path_flag)]}"
-        FIGURE_PATH = f"./seed_comparison/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
+        RESULT_PATH = f"{MOTHER_PATH}/seed_comparison/results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparison/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     else:
-        RESULT_PATH = f"./results/{PATH_DICT[(cfg.mode, path_flag)]}"
-        FIGURE_PATH = f"./figures/{PATH_DICT[(cfg.mode, path_flag)]}"
+        RESULT_PATH = f"{MOTHER_PATH}/results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"{MOTHER_PATH}/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     
     ## generate the latent feature
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_spaces, disjoint=cfg.feat_disjoint, 

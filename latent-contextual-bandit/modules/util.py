@@ -194,6 +194,7 @@ def bounding(type:str, v:np.ndarray, bound:float, method:str=None):
         if method == "upper":
             ## constrain the upper bound of the spectral norm
             v *= (bound / np.linalg.norm(v, 2))
+    return v
 
 
 def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None, 
@@ -230,7 +231,7 @@ def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_d
             
     if bound is not None:
         assert bound_method in ["scaling", "clipping"], "Bounding method should either be 'scaling' or 'clipping'."
-        bounding(type="feature", v=feat, bound=bound, method=bound_method)
+        feat = bounding(type="feature", v=feat, bound=bound, method=bound_method)
     return feat
 
 
@@ -241,7 +242,7 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
     
     if distribution.lower() == "gaussian":
         assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
-        mat =  np.random.randn(obs_dim, latent_dim)
+        mat = np.random.randn(obs_dim, latent_dim)
     else:
         if uniform_rng is None:
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=[-np.sqrt(2/latent_dim), np.sqrt(2/latent_dim)])
@@ -250,11 +251,11 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
         
     if lower_bound is not None:
         ## constrain the lower bound of the spectral norm
-        bounding(type="mapping", v=mat, bound=lower_bound, method="lower")
+        mat = bounding(type="mapping", v=mat, bound=lower_bound, method="lower")
     
     if upper_bound is not None:
         ## constrain the upper bound of the spectral norm
-        bounding(type="mapping", v=mat, bound=upper_bound, method="upper")
+        mat = bounding(type="mapping", v=mat, bound=upper_bound, method="upper")
     return mat
 
 
@@ -281,7 +282,7 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
             param = L @ param
         
     if bound is not None:
-        bounding(type="param", v=param, bound=bound)
+        param = bounding(type="param", v=param, bound=bound)
     return param
 
 
