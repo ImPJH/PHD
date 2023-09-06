@@ -2,7 +2,7 @@ import os
 import pickle
 import json
 import numpy as np
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Dict
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import seaborn as sns

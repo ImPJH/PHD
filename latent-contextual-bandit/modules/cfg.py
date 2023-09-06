@@ -1,4 +1,5 @@
 import argparse
+import multiprocessing
 
 def tuple_type(inputs):
     return tuple(map(float, inputs.split(',')))
@@ -15,6 +16,7 @@ def get_cfg():
     parser.add_argument("--agent_type", type=str)
     parser.add_argument("--check_specs", action="store_true")
     parser.add_argument("--fixed", action="store_true")
+    parser.add_argument("--num_cpus", type=int, default=multiprocessing.cpu_count()//2)
     
     parser.add_argument("--action_spaces", "-A", type=int, default=10000)
     parser.add_argument("--num_actions", "-N", type=int, nargs="+")

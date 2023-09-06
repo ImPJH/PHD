@@ -19,15 +19,9 @@ PATH_DICT = {
     ("partial", "alphas"): "partial/alpha/"
 }
 
-def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, latent:np.ndarray, 
-               decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, 
+               latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
                feat_bound:float, feat_bound_method:str, random_state:int, egreedy:bool=False, verbose:bool=False):
-    """
-    mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, 
-    latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
-    feat_bound:float, feat_bound_method:str, random_state:int, egreedy:bool=False, verbose:bool=False
-    """
-    
     obs_dim, _ = decoder.shape
     
     print(f"\u03B1={alpha}\t|A|={arms}")
@@ -127,13 +121,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
     return np.cumsum(regrets), errors
 
 
-def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, 
-                feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)):
-    """
-    regrets:dict, errors:dict, label_name:str, feat_dist_label:str, 
-    feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)
-    """
-    # (regrets, errors, label_name, feat_dist_label, feat_disjoint, context_label, reward_label, figsize) = args
+def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)):
     NROWS, NCOLS = 2, 2
     fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
     
@@ -247,51 +235,45 @@ if __name__ == "__main__":
         A = A[:, :m]            # (d, k) -> (d, m)
         true_mu = true_mu[:m]   # (k, ) -> (m, )
 
-    with Pool(cfg.num_cpus) as P:
-        regret_results = dict()
-        error_results = dict()
-        for arms in num_actions:
-            assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
-            if run_flag == "fixed":
-                np.random.seed(SEED)
-                idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
-                latent = Z[idx, :]
-            else:
-                latent = Z
-            
-            if cfg.check_specs:
-                print(f"Context std = {context_std:.6f}, SEED = {SEED}")
-                print(f"Shape of the latent feature matrix : {latent.shape}")
-                print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in latent]):.4f}")
-                print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
-                print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
-            
-            ## run an experiment
-            for alpha in ALPHAS:
-                args1 = (cfg.mode, alpha, arms, cfg.lbda, cfg.epsilon, T, latent, A, true_mu, ("gaussian", "gaussian"),
-                         (context_std, cfg.reward_std), cfg.obs_feature_bound, cfg.obs_bound_method, SEED)
-                regrets, errors = P.apply(run_trials, args=args1)
-                # regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
-                #                             decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
-                #                             feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
-                
-                if len(ALPHAS) == 1:
-                    key = arms
-                elif len(num_actions) == 1:
-                    key = alpha
-                regret_results[key] = regrets
-                error_results[key] = errors
-
-        ## save the results        
-        if len(ALPHAS) == 1:
-            label_name = r"$\vert \mathcal{A}_t\vert$"
+    regret_results = dict()
+    error_results = dict()
+    for arms in num_actions:
+        assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
+        if run_flag == "fixed":
+            np.random.seed(SEED)
+            idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
+            latent = Z[idx, :]
         else:
-            label_name = r"$\alpha$"
+            latent = Z
         
-        fname = f"result_mode_{cfg.mode}_seed_{SEED}_latent_{cfg.latent_bound_method}_obs_{cfg.obs_bound_method}"
-        args2 = (regret_results, error_results, label_name, cfg.feat_dist, cfg.feat_disjoint, context_label, str(cfg.reward_std))
-        fig = P.apply(show_result, args=args2)
-        # fig = show_result(regrets=regret_results, errors=error_results, label_name=label_name, feat_dist_label=cfg.feat_dist, 
-        #                 feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
-        save_plot(fig, path=FIGURE_PATH, fname=fname)
-        save_result(result=vars(cfg), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
+        if cfg.check_specs:
+            print(f"Context std = {context_std:.6f}, SEED = {SEED}")
+            print(f"Shape of the latent feature matrix : {latent.shape}")
+            print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in latent]):.4f}")
+            print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
+            print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
+        
+        ## run an experiment
+        for alpha in ALPHAS:
+            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
+                                         decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
+                                         feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
+            
+            if len(ALPHAS) == 1:
+                key = arms
+            elif len(num_actions) == 1:
+                key = alpha
+            regret_results[key] = regrets
+            error_results[key] = errors
+    
+    ## save the results        
+    if len(ALPHAS) == 1:
+        label_name = r"$\vert \mathcal{A}_t\vert$"
+    else:
+        label_name = r"$\alpha$"
+    
+    fname = f"result_mode_{cfg.mode}_seed_{SEED}_latent_{cfg.latent_bound_method}_obs_{cfg.obs_bound_method}"
+    fig = show_result(regrets=regret_results, errors=error_results, label_name=label_name, feat_dist_label=cfg.feat_dist, 
+                      feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
+    save_plot(fig, path=FIGURE_PATH, fname=fname)
+    save_result(result=vars(cfg), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
