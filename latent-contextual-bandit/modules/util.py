@@ -137,7 +137,7 @@ def left_pseudo_inverse(A:np.ndarray):
     u, A_sig, v_T = np.linalg.svd(A)
     
     B_sig = np.zeros((k, d))
-    for i in range(k):
+    for i in range(min(d, k)):
         B_sig[i, i] = 1 / A_sig[i]
     B = v_T.T @ B_sig @ u.T
     return B
