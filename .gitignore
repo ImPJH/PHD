@@ -1,5 +1,4 @@
 *.txt
-*.sh
 *.zip
 *.pt
 *.txt
@@ -10,4 +9,3 @@ __pycache__/
 mnist/
 .ipynb_checkpoints/
 results/
-scripts/
