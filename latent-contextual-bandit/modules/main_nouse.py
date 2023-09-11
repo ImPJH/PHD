@@ -13,49 +13,58 @@ FEAT_DICT = {
 MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
 
 PATH_DICT = {
-    ("full", "fixed", "experiment"): "full/fixed/",
-    ("full", "unfixed", "experiment"): "full/unfixed/",
-    ("partial", "arms", "experiment"): "partial/arms/experiment/",
-    ("partial", "alphas", "experiment"): "partial/alpha/experiment/",
-    ("partial", "arms", "control"): "partial/arms/control/",
-    ("partial", "alphas", "control"): "partial/alpha/control/"
+    ("full", "fixed"): "full/fixed/",
+    ("full", "unfixed"): "full/unfixed/",
+    ("partial", "arms"): "partial/arms/",
+    ("partial", "alphas"): "partial/alpha/"
 }
 
-def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, latent:np.ndarray, 
-               decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], feat_bound:float, 
-               feat_bound_method:str, random_state:int, is_control:bool, egreedy:bool=False, verbose:bool=False):
-    obs_dim, _ = decoder.shape
+# def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, 
+#                latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+#                feat_bound:float, feat_bound_method:str, random_state:int, egreedy:bool=False, verbose:bool=False):
+#     """
+#     mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, 
+#     latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+#     feat_bound:float, feat_bound_method:str, random_state:int, egreedy:bool=False, verbose:bool=False
+#     """
+#     # (mode, trials, alpha, arms, lbda, epsilon, horizon, latent, decoder, reward_params,
+#     #  noise_dist, noise_std, feat_bound, feat_bound_method, random_state, egreedy, verbose) = args
+#     obs_dim, _ = decoder.shape
     
-    print(f"\u03B1={alpha}\t|A|={arms}")
-    regret_container = np.zeros(trials, dtype=object)
-    error_container = np.zeros(trials, dtype=object)
-    for trial in range(trials):
-        if mode == "full":
-            if not egreedy:
-                agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
-            else:
-                agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
-        else:
-            if is_control:
-                agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
-            else:                                                                                                                       
-                agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
-        random_state_ = random_state + (10000000*(trial+1)) + int(1000000*alpha) + (100000*arms)
-        regrets, errors = run(mode=mode, agent=agent, horizon=horizon, arms=arms, latent=latent, decoder=decoder, 
-                              reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
-                              feat_bound_method=feat_bound_method, is_control=is_control, random_state=random_state_, verbose=verbose)
-        regret_container[trial] = regrets
-        error_container[trial] = errors
+#     print(f"\u03B1={alpha}\t|A|={arms}")
+#     regret_container = np.zeros(trials, dtype=object)
+#     error_container = np.zeros(trials, dtype=object)
+#     for trial in range(trials):
+#         if mode == "full":
+#             if not egreedy:
+#                 agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
+#             else:
+#                 agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
+#         else:                                                                                                                       
+#             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
+#         random_state_ = random_state + (10000000*(trial+1)) + int(1000000*alpha) + (100000*arms)
+#         # with Pool(cfg.num_cpus) as P:
+#             # sub_args = (mode, agent, horizon, arms, latent, decoder, reward_params, noise_dist, 
+#             #             noise_std, feat_bound, feat_bound_method, random_state_, verbose)
+#             # regrets, errors = P.map(run, [sub_args])[0]
+#         regrets, errors = run(mode=mode, agent=agent, horizon=horizon, arms=arms, latent=latent, decoder=decoder, 
+#                             reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
+#                             feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
+#         regret_container[trial] = regrets
+#         error_container[trial] = errors
     
-    return regret_container, error_container
+#     return regret_container, error_container
 
 
-def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, arms:int, latent:np.ndarray, 
-        decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
-        feat_bound:float, feat_bound_method:str, is_control:bool, random_state:int, verbose:bool):
+def run(args:Tuple):
     """
-    if in control group mode(is_control is True), a different reward_params is needed to match the dimension
+    mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, arms:int, latent:np.ndarray, 
+    decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+    feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool
     """
+    (mode, agent, horizon, arms, latent, decoder, reward_params, noise_dist, 
+     noise_std, feat_bound, feat_bound_method, random_state, verbose) = args
+    
     action_size, _ = latent.shape
     obs_dim, _ = decoder.shape
     context_noise_dist, reward_noise_dist = noise_dist
@@ -64,18 +73,13 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
     ## make the mapped features in advance before iteration
     observe_space = latent @ decoder.T          # (M, k) @ (k, d) -> (M, d) or (M, m) @ (m, d) -> (M, d)
     decoder_inv = left_pseudo_inverse(decoder)
-    # true_theta = decoder_inv.T @ reward_params  # (d, m) @ (m, ) -> (d, )
+    true_theta = decoder_inv.T @ reward_params  # (d, m) @ (m, ) -> (d, )
 
     if mode == "partial":
         inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint,
                                            bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state)
-        if is_control:
-            true_theta = reward_params
-        else:
-            true_theta = decoder_inv.T @ reward_params  # (d, m) @ (m, ) -> (d, )
-            true_theta = np.concatenate([true_theta, inherent_rewards], axis=0) # (d, ) -> (d+N, )
+        true_theta = np.concatenate([true_theta, inherent_rewards], axis=0) # (d, ) -> (d+N, )
     else:
-        true_theta = decoder_inv.T @ reward_params  # (d, m) @ (m, ) -> (d, )
         inherent_rewards = 0.
     
     regrets = np.zeros(horizon, dtype=float)
@@ -94,7 +98,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
         idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
         latent_set, mapped_set = latent[idx, :], observe_space[idx, :]
         
-        ## sample the context noise and construct the observable features
+        ## sample the context noise and generate the observable features
         context_noise = subgaussian_noise(distribution=context_noise_dist, size=(arms*obs_dim), 
                                           std=context_noise_std, random_state=random_state_).reshape(arms, d)
         action_set = mapped_set + context_noise
@@ -103,16 +107,12 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
         if feat_bound_method is not None:
             bounding(type="feature", v=action_set, bound=feat_bound, method=feat_bound_method)
         
-        if mode == "partial" and not is_control:
+        if mode == "partial":
             action_set = np.concatenate([action_set, np.identity(arms)], axis=1)
         
         ## sample the reward noise and compute the reward
         reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=arms, std=reward_noise_std, random_state=random_state_)
-        if is_control:
-            expected_reward = action_set @ reward_params
-        else:
-            expected_reward = latent_set @ reward_params + inherent_rewards
-        
+        expected_reward = latent_set @ reward_params + inherent_rewards
         if t == 0:
             print(f"Mode : {mode}\tFixed arm set : {(action_size == arms)}\tReward range : [{np.amin(expected_reward):.5f}, {np.amax(expected_reward):.5f}]")
         realized_reward = expected_reward + reward_noise
@@ -138,7 +138,13 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
     return np.cumsum(regrets), errors
 
 
-def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)):
+def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, 
+                feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)):
+    """
+    regrets:dict, errors:dict, label_name:str, feat_dist_label:str, 
+    feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)
+    """
+    # (regrets, errors, label_name, feat_dist_label, feat_disjoint, context_label, reward_label, figsize) = args
     NROWS, NCOLS = 2, 2
     fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
     
@@ -203,6 +209,7 @@ if __name__ == "__main__":
     T = cfg.horizon
     SEED = cfg.seed
     ALPHAS = cfg.alphas
+    is_egreedy = cfg.egreedy
     
     if cfg.mode == "full":
         if cfg.fixed:
@@ -211,7 +218,6 @@ if __name__ == "__main__":
         else:
             path_flag = "unfixed"
             run_flag = "unfixed"
-        control_flag = "experiment"
             
     if cfg.mode == "partial":
         run_flag = "fixed"
@@ -219,10 +225,6 @@ if __name__ == "__main__":
             path_flag = "arms"
         if len(ALPHAS) > 1:
             path_flag = "alphas"
-        if cfg.is_control:
-            control_flag = "control"
-        else:
-            control_flag = "experiment"
     
     if "T" in cfg.context_std:
         power = cfg.context_std.split("T")[-1]
@@ -233,11 +235,11 @@ if __name__ == "__main__":
         context_label = cfg.context_std
     
     if cfg.seed_mode:
-        RESULT_PATH = f"{MOTHER_PATH}/seed_comparison/results/{PATH_DICT[(cfg.mode, path_flag, control_flag)]}"
-        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparison/figures/{PATH_DICT[(cfg.mode, path_flag, control_flag)]}"
+        RESULT_PATH = f"{MOTHER_PATH}/seed_comparison/results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparison/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     else:
-        RESULT_PATH = f"{MOTHER_PATH}/results/{PATH_DICT[(cfg.mode, path_flag, control_flag)]}"
-        FIGURE_PATH = f"{MOTHER_PATH}/figures/{PATH_DICT[(cfg.mode, path_flag, control_flag)]}"
+        RESULT_PATH = f"{MOTHER_PATH}/results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"{MOTHER_PATH}/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     
     ## generate the latent feature
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_spaces, disjoint=cfg.feat_disjoint, 
@@ -249,25 +251,21 @@ if __name__ == "__main__":
                           upper_bound=cfg.map_upper_bound, uniform_rng=cfg.map_uniform_rng, random_state=SEED+1)
     
     ## generate the true parameter -> corresponds to "mu"
+    true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
+                              uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    
     if cfg.mode == "partial":
         Z = Z[:, :m]            # (M, k) -> (M, m)
         A = A[:, :m]            # (d, k) -> (d, m)
-        # true_mu = true_mu[:m]
-        if cfg.is_control:
-            true_mu = param_generator(dimension=d, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                      bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
-        else:
-            true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                      bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
-    else:
-        true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+        true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
                                   bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
 
+    # with Pool(cfg.num_cpus) as P:
     regret_results = dict()
     error_results = dict()
     for arms in num_actions:
         assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
-        if run_flag == "unfixed":
+        if run_flag == "fixed":
             np.random.seed(SEED)
             idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
             latent = Z[idx, :]
@@ -283,17 +281,40 @@ if __name__ == "__main__":
         
         ## run an experiment
         for alpha in ALPHAS:
-            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
-                                         decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
-                                         feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED, is_control=cfg.is_control)
+            # args1 = (cfg.mode, cfg.trials, alpha, arms, cfg.lbda, cfg.epsilon, T, latent, A, true_mu, ("gaussian", "gaussian"),
+            #             (context_std, cfg.reward_std), cfg.obs_feature_bound, cfg.obs_bound_method, SEED, False, False)
+            # regrets, errors = P.map(func=run_trials, iterable=[args1])[0]
+            # regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
+            #                              decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
+            #                              feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
+            obs_dim, _ = A.shape
+            print(f"\u03B1={alpha}\t|A|={arms}")
+            # regret_container, error_container = [], []
+            with Pool(cfg.trials) as P:
+                args_list = []
+                for trial in range(cfg.trials):
+                    if cfg.mode == "full":
+                        if not is_egreedy:
+                            agent = LinUCB(d=obs_dim, alpha=alpha, lbda=cfg.lbda)
+                        else:
+                            agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=cfg.lbda, epsilon=cfg.epsilon)    
+                    else:                                                                                                                       
+                        agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=cfg.lbda)
+                    random_state = SEED + (10000000*(trial+1)) + int(1000000*alpha) + (100000*arms)
+                    args = (cfg.mode, agent, T, arms, latent, A, true_mu, ("gaussian", "gaussian"), (context_std, cfg.reward_std),
+                            cfg.obs_feature_bound, cfg.obs_bound_method, random_state, cfg.verbose)
+                    args_list.append(args)
+                results = P.map(run, args_list)
+            regret_container = np.array([item[0] for item in results], dtype=object)
+            error_container = np.array([item[1] for item in results], dtype=object)
             
             if len(ALPHAS) == 1:
                 key = arms
             elif len(num_actions) == 1:
                 key = alpha
-            regret_results[key] = regrets
-            error_results[key] = errors
-    
+            regret_results[key] = regret_container
+            error_results[key] = error_container
+
     ## save the results        
     if len(ALPHAS) == 1:
         label_name = r"$\vert \mathcal{A}_t\vert$"
@@ -301,6 +322,8 @@ if __name__ == "__main__":
         label_name = r"$\alpha$"
     
     fname = f"result_mode_{cfg.mode}_seed_{SEED}_latent_{cfg.latent_bound_method}_obs_{cfg.obs_bound_method}"
+    # args2 = (regret_results, error_results, label_name, cfg.feat_dist, cfg.feat_disjoint, context_label, str(cfg.reward_std))
+    # fig = P.map(func=show_result, iterable=[args2])[0]
     fig = show_result(regrets=regret_results, errors=error_results, label_name=label_name, feat_dist_label=cfg.feat_dist, 
                       feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)

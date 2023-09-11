@@ -72,3 +72,4 @@ class PartialLinUCB(LinUCB):
         self.arms = arms
         self.xty = np.zeros(d+arms)
         self.Vinv = (1 / lbda) * np.identity(d+arms)
+        self.theta_hat = np.zeros(d+arms)

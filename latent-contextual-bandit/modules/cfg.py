@@ -17,7 +17,7 @@ def get_cfg():
     parser.add_argument("--check_specs", action="store_true")
     parser.add_argument("--fixed", action="store_true")
     parser.add_argument("--num_cpus", type=int, default=multiprocessing.cpu_count()//2)
-    
+        
     parser.add_argument("--action_spaces", "-A", type=int, default=10000)
     parser.add_argument("--num_actions", "-N", type=int, nargs="+")
     parser.add_argument("--obs_dim", "-d", type=int, default=10)
@@ -27,6 +27,7 @@ def get_cfg():
     parser.add_argument("--seed", "-S", type=int, default=None)
     parser.add_argument("--lbda", "-L", type=float, default=1.)
     parser.add_argument("--epsilon", "-E", type=float, default=0.1)
+    parser.add_argument("--egreedy", action="store_true")
     
     parser.add_argument("--feat_dist", "-FD", type=str, default="gaussian")
     parser.add_argument("--feat_disjoint", action="store_true")
@@ -52,5 +53,6 @@ def get_cfg():
     parser.add_argument("--param_disjoint", action="store_true")
     
     parser.add_argument("--filetype", type=str, choices=["pickle", "json"], default="pickle")
+    parser.add_argument("--is_control", action="store_true")
     
     return parser.parse_args()

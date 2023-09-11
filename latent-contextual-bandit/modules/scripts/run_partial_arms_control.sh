@@ -10,5 +10,5 @@ for seed in "${seeds[@]}"; do
 # for seed in {200..299}; do
 # for seed in $seeds; do
     echo "Partial Mode"
-    python main.py --mode partial --alphas 0.3 --trials 6 --action_spaces 50000 --num_actions 10 20 30 40 50 --obs_dim 10 --latent_dim 8 --num_visibles 5 --horizon 30000 --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std T-0.5 --reward_std 0.1 --param_dist uniform --param_bound 1 --param_uniform_rng -1 1 --param_disjoint --check_specs --seed_mode
+    python main.py --mode partial --alphas 0.3 --trials 6 --action_spaces 50000 --num_actions 10 20 30 40 50 --obs_dim 10 --latent_dim 8 --num_visibles 5 --horizon 30000 --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std T-0.5 --reward_std 0.1 --param_dist uniform --param_bound 1 --param_uniform_rng -1 1 --param_disjoint --check_specs --seed_mode --is_control
 done
