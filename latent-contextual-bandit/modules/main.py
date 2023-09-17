@@ -238,13 +238,9 @@ if __name__ == "__main__":
     if cfg.mode == "partial":
         Z = Z[:, :m]            # (M, k) -> (M, m)
         A = A[:, :m]            # (d, k) -> (d, m)
-        # true_mu = true_mu[:m]
-        if cfg.is_control:
-            true_mu = param_generator(dimension=d, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                      bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
-        else:
-            true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                      bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+        true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+                                  bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+
     else:
         true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
                                   bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
@@ -253,17 +249,23 @@ if __name__ == "__main__":
     error_results = dict()
     for arms in num_actions:
         assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
+        if run_flag == "fixed":
+            np.random.seed(SEED)
+            idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
+            latent = Z[idx, :]
+        else:
+            latent = Z[:]
         
         if cfg.check_specs:
             print(f"Context std = {context_std:.6f}, SEED = {SEED}")
-            print(f"Shape of the latent feature matrix : {Z.shape}, Number of influential variables: {m}")
+            print(f"Shape of the latent feature matrix : {latent.shape}, Number of influential variables: {m}")
             print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in Z]):.4f}")
             print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
             print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
         
         ## run an experiment
         for alpha in ALPHAS:
-            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=Z, 
+            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
                                          decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
                                          feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
             
