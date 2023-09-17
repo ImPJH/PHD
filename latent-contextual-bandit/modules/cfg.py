@@ -53,6 +53,6 @@ def get_cfg():
     parser.add_argument("--param_disjoint", action="store_true")
     
     parser.add_argument("--filetype", type=str, choices=["pickle", "json"], default="pickle")
-    parser.add_argument("--is_control", action="store_true")
+    # parser.add_argument("--is_control", action="store_true")
     
     return parser.parse_args()
