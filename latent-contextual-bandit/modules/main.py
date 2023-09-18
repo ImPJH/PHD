@@ -16,8 +16,6 @@ PATH_DICT = {
     ("full", "fixed"): "full/fixed/",
     ("full", "unfixed"): "full/unfixed/",
     ("partial", "arms"): "partial/arms/",
-    ("partial", "alphas"): "partial/alpha/",
-    ("partial", "arms"): "partial/arms/",
     ("partial", "alphas"): "partial/alpha/"
 }
 
