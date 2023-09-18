@@ -10,7 +10,8 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
-MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
+# MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
+MOTHER_PATH = "/Users/sungwoo/ppatteori109@gmail.com - Google Drive/내 드라이브/GSDS/bandit-research-results"
 
 PATH_DICT = {
     ("full", "fixed"): "full/fixed/",
@@ -30,17 +31,16 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
     for trial in range(trials):
         if mode == "full":
             if not egreedy:
-                # agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
-                agent = LinUCB(d=latent_dim, alpha=alpha, lbda=lbda)
+                agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
             else:
                 agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
         else:
             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
-        random_state_ = random_state + (999999*(trial+1)) + int(999999*alpha) + (99999*arms)
+        random_state_ = random_state + (7777777*(trial+1)) + int(999999*alpha) + (99999*arms)
         if is_fixed == "fixed":
             np.random.seed(random_state_)
             idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
-            print(idx)
+            # print(idx)
             latent_ = latent[idx, :].copy()
             action_space_size = arms
         else:
@@ -60,9 +60,6 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
 def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, action_size:int, arms:int, 
         latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
         feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
-    """
-    if in control group mode(is_control is True), a different reward_params is needed to match the dimension
-    """
     # action_size, _ = latent.shape
     obs_dim, _ = decoder.shape
     context_noise_dist, reward_noise_dist = noise_dist
@@ -110,9 +107,6 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
         
         if mode == "partial":
             action_set = np.concatenate([action_set, np.identity(arms)], axis=1)
-        
-        action_set = latent_set
-        obs_mu = reward_params
         
         ## sample the reward noise and compute the reward
         reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=arms, std=reward_noise_std, random_state=random_state_)
@@ -295,7 +289,7 @@ if __name__ == "__main__":
     else:
         label_name = r"$\alpha$"
     
-    fname = f"result_mode_{cfg.mode}_seed_{SEED}_latent_{cfg.latent_bound_method}_obs_{cfg.obs_bound_method}_numvisibles_{cfg.num_visibles}"
+    fname = f"result_mode_{cfg.mode}_seed_{SEED}_context_noise_{context_label}_numvisibles_{cfg.num_visibles}"
     fig = show_result(regrets=regret_results, errors=error_results, label_name=label_name, feat_dist_label=cfg.feat_dist, 
                       feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
