@@ -23,36 +23,49 @@ PATH_DICT = {
 
 def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, latent:np.ndarray, 
                decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], feat_bound:float, 
-               feat_bound_method:str, random_state:int, egreedy:bool=False, verbose:bool=False):
-    obs_dim, _ = decoder.shape
+               feat_bound_method:str, random_state:int, is_fixed:str, egreedy:bool=False, verbose:bool=False):
+    obs_dim, latent_dim = decoder.shape
+    action_size = latent.shape[0]
     print(f"\u03B1={alpha}\t|A|={arms}")
     regret_container = np.zeros(trials, dtype=object)
     error_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
         if mode == "full":
             if not egreedy:
-                agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
+                # agent = LinUCB(d=obs_dim, alpha=alpha, lbda=lbda)
+                agent = LinUCB(d=latent_dim, alpha=alpha, lbda=lbda)
             else:
                 agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
         else:
             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
-        random_state_ = random_state + (1999999*(trial+1)) + int(1999999*alpha) + (199999*arms)
-        regrets, errors = run(mode=mode, agent=agent, horizon=horizon, arms=arms, latent=latent, decoder=decoder, 
-                              reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
-                              feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
+        random_state_ = random_state + (999999*(trial+1)) + int(999999*alpha) + (99999*arms)
+        if is_fixed == "fixed":
+            np.random.seed(random_state_)
+            idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
+            print(idx)
+            latent_ = latent[idx, :].copy()
+            action_space_size = arms
+        else:
+            latent_ = latent.copy()
+            action_space_size = action_size
+        print(f"Running seed : {random_state_}, Shape of the latent features : {latent_.shape}")
+        # print(latent)
+        regrets, errors = run(mode=mode, agent=agent, horizon=horizon, action_size=action_space_size, arms=arms, latent=latent_, 
+                              decoder=decoder, reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, 
+                              feat_bound=feat_bound, feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
         error_container[trial] = errors
     
     return regret_container, error_container
 
 
-def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, arms:int, latent:np.ndarray, 
-        decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, action_size:int, arms:int, 
+        latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
         feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
     """
     if in control group mode(is_control is True), a different reward_params is needed to match the dimension
     """
-    action_size, _ = latent.shape
+    # action_size, _ = latent.shape
     obs_dim, _ = decoder.shape
     context_noise_dist, reward_noise_dist = noise_dist
     context_noise_std, reward_noise_std = noise_std
@@ -99,6 +112,9 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
         
         if mode == "partial":
             action_set = np.concatenate([action_set, np.identity(arms)], axis=1)
+        
+        action_set = latent_set
+        obs_mu = reward_params
         
         ## sample the reward noise and compute the reward
         reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=arms, std=reward_noise_std, random_state=random_state_)
@@ -249,25 +265,24 @@ if __name__ == "__main__":
     error_results = dict()
     for arms in num_actions:
         assert len(num_actions) == 1 or len(ALPHAS) == 1, "Either `num_actions` or `ALPHAS` is required to have only one element."
-        if run_flag == "fixed":
-            np.random.seed(SEED)
-            idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
-            latent = Z[idx, :]
-        else:
-            latent = Z[:]
+        # if run_flag == "fixed":
+        #     np.random.seed(SEED)
+        #     idx = np.random.choice(np.arange(action_spaces), size=arms, replace=False)
+        #     latent = Z[idx, :]
+        # else:
+        #     latent = Z[:]
         
         if cfg.check_specs:
-            print(f"Context std = {context_std:.6f}, SEED = {SEED}")
-            print(f"Shape of the latent feature matrix : {latent.shape}, Number of influential variables: {m}")
+            print(f"Context std : {context_std:.6f}, Original seed : {SEED}, Number of influential variables : {m}")
             print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in Z]):.4f}")
             print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
             print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
         
         ## run an experiment
         for alpha in ALPHAS:
-            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=latent, 
+            regrets, errors = run_trials(mode=cfg.mode, trials=cfg.trials, alpha=alpha, arms=arms, lbda=cfg.lbda, epsilon=cfg.epsilon, horizon=T, latent=Z, 
                                          decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
-                                         feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
+                                         feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED, is_fixed=run_flag)
             
             if len(ALPHAS) == 1:
                 key = arms
