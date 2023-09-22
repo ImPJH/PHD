@@ -10,8 +10,8 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
-# MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
-MOTHER_PATH = "/Users/sungwoo/ppatteori109@gmail.com - Google Drive/내 드라이브/GSDS/bandit-research-results"
+MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
+# MOTHER_PATH = "/Users/sungwoo/ppatteori109@gmail.com - Google Drive/내 드라이브/GSDS/bandit-research-results"
 
 PATH_DICT = {
     ("full", "fixed"): "full/fixed/",
@@ -28,6 +28,12 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
     print(f"\u03B1={alpha}\t|A|={arms}")
     regret_container = np.zeros(trials, dtype=object)
     error_container = np.zeros(trials, dtype=object)
+    if mode == "partial":
+        inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+                                           bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state)
+    else:
+        inherent_rewards = 0.
+        
     for trial in range(trials):
         if mode == "full":
             if not egreedy:
@@ -36,7 +42,7 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
                 agent = LineGreedy(d=obs_dim, alpha=alpha, lbda=lbda, epsilon=epsilon)    
         else:
             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
-        random_state_ = random_state + (7777777*(trial+1)) + int(999999*alpha) + (99999*arms)
+        random_state_ = random_state + (111111*(trial+1)) + int(111111*alpha) + (111111*arms)
         if is_fixed == "fixed":
             np.random.seed(random_state_)
             idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
@@ -48,8 +54,8 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
             action_space_size = action_size
         print(f"Running seed : {random_state_}, Shape of the latent features : {latent_.shape}")
         # print(latent)
-        regrets, errors = run(mode=mode, agent=agent, horizon=horizon, action_size=action_space_size, arms=arms, latent=latent_, 
-                              decoder=decoder, reward_params=reward_params, noise_dist=noise_dist, noise_std=noise_std, 
+        regrets, errors = run(mode=mode, agent=agent, horizon=horizon, action_size=action_space_size, arms=arms, latent=latent_, decoder=decoder, 
+                              reward_params=reward_params, inherent_rewards=inherent_rewards, noise_dist=noise_dist, noise_std=noise_std, 
                               feat_bound=feat_bound, feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
         error_container[trial] = errors
@@ -58,8 +64,8 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
 
 
 def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, action_size:int, arms:int, 
-        latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
-        feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
+        latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, inherent_rewards:Union[np.ndarray, float],
+        noise_dist:Tuple[str], noise_std:Tuple[float], feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
     # action_size, _ = latent.shape
     obs_dim, _ = decoder.shape
     context_noise_dist, reward_noise_dist = noise_dist
@@ -71,11 +77,11 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
     obs_mu = decoder_inv.T @ reward_params  # (d, m) @ (m, ) -> (d, )
 
     if mode == "partial":
-        inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint,
-                                           bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state)
+        # inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint,
+        #                                    bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state)
         obs_mu = np.concatenate([obs_mu, inherent_rewards], axis=0) # (d, ) -> (d+N, )
-    else:
-        inherent_rewards = 0.
+    # else:
+    #     inherent_rewards = 0.
     
     regrets = np.zeros(horizon, dtype=float)
     errors = np.zeros(horizon, dtype=float)
@@ -289,7 +295,7 @@ if __name__ == "__main__":
     else:
         label_name = r"$\alpha$"
     
-    fname = f"result_mode_{cfg.mode}_seed_{SEED}_context_noise_{context_label}_numvisibles_{cfg.num_visibles}"
+    fname = f"result_mode_{cfg.mode}_seed_{SEED}_context_noise_{cfg.context_std}_numvisibles_{cfg.num_visibles}_bound_method_{cfg.latent_bound_method}"
     fig = show_result(regrets=regret_results, errors=error_results, label_name=label_name, feat_dist_label=cfg.feat_dist, 
                       feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
