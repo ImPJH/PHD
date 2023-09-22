@@ -11,7 +11,6 @@ FEAT_DICT = {
 }
 
 MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
-# MOTHER_PATH = "/Users/sungwoo/ppatteori109@gmail.com - Google Drive/내 드라이브/GSDS/bandit-research-results"
 
 PATH_DICT = {
     ("full", "fixed"): "full/fixed/",
