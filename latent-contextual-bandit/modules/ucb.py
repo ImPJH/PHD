@@ -5,6 +5,7 @@ from typing import List
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from datetime import datetime
+from get_primes import get_primes
 
 ############################################# ARMS #############################################
 class BernoulliArm:
@@ -141,7 +142,7 @@ if __name__ == "__main__":
     TRIALS = 5
     SIGMA = 0.1
     ALPHA = 0.3
-    SEED = [i for i in range(300, 400)]
+    SEED = get_primes(start=300, end=1500)
     PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/seed_comparison/figures/UCB/arms"
     
     for seed in SEED:
