@@ -14,7 +14,7 @@ TRIALS=10 # number of trials
 echo "Context Noise is 1 over sqrt(T)"
 IFS=','
 # for seed in "${seeds[@]}"; do
-for seed in {300..309}; do
+for seed in {301..309}; do
 # for seed in $seeds; do
     echo "Partial Mode"
     python main_v3.py --mode partial --alphas 0.3 --trials $TRIALS --action_spaces $M --num_actions 10 20 30 40 50 --obs_dim $d --latent_dim $k --num_visibles 1 --horizon $T --seed $seed --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method clipping --map_dist uniform --map_upper_bound 1 --context_std T-0.5 --reward_std 0.1 --param_dist uniform --param_bound 1 --param_uniform_rng -1 1 --param_disjoint --check_specs --seed_mode
@@ -25,7 +25,7 @@ done
 echo "Context Noise is 0"
 IFS=','
 # for seed in "${seeds[@]}"; do
-for seed in {300..309}; do
+for seed in {301..309}; do
 # for seed in $seeds; do
     echo "Partial Mode"
     python main_v3.py --mode partial --alphas 0.3 --trials $TRIALS --action_spaces $M --num_actions 10 20 30 40 50 --obs_dim $d --latent_dim $k --num_visibles 1 --horizon $T --seed $seed --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method clipping --map_dist uniform --map_upper_bound 1 --context_std 0 --reward_std 0.1 --param_dist uniform --param_bound 1 --param_uniform_rng -1 1 --param_disjoint --check_specs --seed_mode

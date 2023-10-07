@@ -139,14 +139,15 @@ def show_result(regrets:dict, horizon:int, label_name:str, arm_name:str, seed:in
 
 if __name__ == "__main__":
     T = 30000
-    TRIALS = 5
+    TRIALS = 10
     SIGMA = 0.1
     ALPHA = 0.3
-    SEED = get_primes(start=300, end=1500)
+    # SEED = get_primes(start=300, end=1500)
+    SEED = [i for i in range(350, 400)]
     PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/seed_comparison/figures/UCB/arms"
     
     for seed in SEED:
-        num_actions = [10*(i+1) for i in range(5)]
+        num_actions = [5] + [10*(i+1) for i in range(4)]
         regret_results = dict()
         for n_arms in num_actions:
             print(f"SEED = {seed}\t|A_t| = {n_arms}")
