@@ -294,7 +294,7 @@ if __name__ == "__main__":
     else:
         label_name = r"$\alpha$"
     
-    fname = f"result_mode_{cfg.mode}_seed_{SEED}_context_noise_{cfg.context_std}_numvisibles_{cfg.num_visibles}_bound_method_{cfg.latent_bound_method}"
+    fname = f"{cfg.mode}_seed_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_bound_{cfg.latent_bound_method}_feat_{cfg.feat_dist}_map_{cfg.map_dist}"
     fig = show_result(regrets=regret_results, errors=error_results, label_name=label_name, feat_dist_label=cfg.feat_dist, 
                       feat_disjoint=cfg.feat_disjoint, context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
