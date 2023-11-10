@@ -145,7 +145,7 @@ if __name__ == "__main__":
     T = 30000
     TRIALS = 10
     SIGMA = 0.1
-    ALPHA = 0.3
+    ALPHA = 1.0
     SEED = get_primes(start=6000, end=10000)
     # SEED = [i for i in range(350, 400)]
     PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/seed_comparison2/figures/UCB/arms_vary"

@@ -32,9 +32,10 @@ class LinUCB(ContextualBandit):
         ucb_scores = expected + (self.alpha * width) # (N, ) ucb score
         
         ## chose the argmax the ucb score
-        maximum = np.max(ucb_scores)
-        argmax, = np.where(ucb_scores == maximum)        
-        return np.random.choice(argmax)
+        # maximum = np.max(ucb_scores)
+        # argmax, = np.where(ucb_scores == maximum)
+        # return np.random.choice(argmax)
+        return np.argmax(ucb_scores)
     
     def update(self, x, r):
         # x: context of the chosen action (d, )
