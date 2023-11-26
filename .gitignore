@@ -2,6 +2,7 @@
 *.zip
 *.pt
 *.txt
+*.png
 .DS_Store
 
 __pycache__/
