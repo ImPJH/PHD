@@ -31,11 +31,11 @@ class LinUCB(ContextualBandit):
         width = np.sqrt(np.einsum("Ni, ij, Nj -> N", x, self.Vinv, x) * np.log(self.t)) # (N, ) widths
         ucb_scores = expected + (self.alpha * width) # (N, ) ucb score
         
-        ## chose the argmax the ucb score
-        # maximum = np.max(ucb_scores)
-        # argmax, = np.where(ucb_scores == maximum)
-        # return np.random.choice(argmax)
-        return np.argmax(ucb_scores)
+        ## choose the argmax the ucb score
+        maximum = np.max(ucb_scores)
+        argmax, = np.where(ucb_scores == maximum)
+        return np.random.choice(argmax)
+        # return np.argmax(ucb_scores)
     
     def update(self, x, r):
         # x: context of the chosen action (d, )
@@ -45,18 +45,21 @@ class LinUCB(ContextualBandit):
 
 class LineGreedy(LinUCB):
     ## epsilon greedy linear bandit
-    def __init__(self, d, alpha, lbda, epsilon):
+    def __init__(self, d, alpha, lbda):
         super().__init__(d, alpha, lbda)
-        self.epsilon = epsilon
+        self.t = 0
         
     def choose(self, x):
+        self.t += 1
+        epsilon = (1./self.t) * self.alpha
+        
         arms, _ = x.shape
         theta_hat = self.Vinv @ self.xty
         expected = x @ theta_hat
         
         ## epsilon greedy
         p = np.random.random()
-        if self.epsilon < p:
+        if epsilon < p:
             ## with 1-epsilon probability, choose the greedy action
             maximum = np.max(expected)
             argmax, = np.where(expected == maximum)
@@ -65,8 +68,8 @@ class LineGreedy(LinUCB):
             ## with epsilon probability, choose a random action
             best_arm = np.random.randint(arms)    
         return best_arm
-    
-    
+
+
 class PartialLinUCB(LinUCB):
     def __init__(self, d, arms, alpha, lbda):
         super().__init__(d, alpha, lbda)
@@ -74,3 +77,33 @@ class PartialLinUCB(LinUCB):
         self.xty = np.zeros(d+arms)
         self.Vinv = (1 / lbda) * np.identity(d+arms)
         self.theta_hat = np.zeros(d+arms)
+        
+
+class LinTS(ContextualBandit):
+    def __init__(self, d, alpha):
+        self.alpha = alpha
+        self.Binv = np.identity(d)
+        self.xty = np.zeros(d)
+        self.theta_hat = np.zeros(d)
+    
+    def choose(self, x):
+        # x: action set at each round (N, d)
+        ## compute the ridge estimator
+        self.theta_hat = self.Binv @ self.xty
+        
+        ## parameter sampling
+        tilde_theta = np.random.multivariate_normal(mean=self.theta_hat, cov=(self.alpha**2) * self.Binv)  # (d, ) random matrix
+        
+        ## compute estimates and choose the argmax
+        expected = x @ tilde_theta  # (N, ) vector
+        maximum = np.max(expected)
+        argmax, = np.where(expected == maximum)
+        return np.random.choice(argmax)
+        # return np.argmax(expected)
+    
+    def update(self, x, r):
+        # x: context of the chosen action (d, )
+        # r: reward seen (scalar)
+        self.Binv = shermanMorrison(self.Binv, x)
+        self.xty += (r * x)
+        

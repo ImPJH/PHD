@@ -13,21 +13,22 @@ FEAT_DICT = {
 MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
 
 PATH_DICT = {
-    ("full", "fixed"): "full/fixed_vary/",
-    ("full", "unfixed"): "full/unfixed_vary/",
-    ("partial", "arms"): "partial/arms_vary/",
-    ("partial", "alphas"): "partial/alpha_vary/"
+    ("full", "fixed"): "full/fixed_vary_split/",
+    ("full", "unfixed"): "full/unfixed_vary_split/",
+    ("partial", "arms"): "partial/arms_vary_split/",
+    ("partial", "alphas"): "partial/alpha_vary_split/"
 }
 
 def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, latent:np.ndarray, 
                decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], feat_bound:float, 
                feat_bound_method:str, random_state:int, is_fixed:str, egreedy:bool=False, verbose:bool=False):
     obs_dim, latent_dim = decoder.shape
-    action_size = latent.shape[0]
+    action_size = latent.shape[0] # action space size M
     print(f"\u03B1={alpha}\t|A|={arms}")
     regret_container = np.zeros(trials, dtype=object)
     error_container = np.zeros(trials, dtype=object)
-        
+    
+    original_params = reward_params.copy()
     for trial in range(trials):
         if mode == "full":
             if not egreedy:
@@ -38,21 +39,29 @@ def run_trials(mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:
             agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
         random_state_ = random_state + (11111*(trial+1)) + int(11111*alpha) + (11111*arms)
         
-        if mode == "partial":
-            inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                               bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
-        else:
-            inherent_rewards = 0.
-        
         if is_fixed == "fixed":
             np.random.seed(random_state_)
             idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
             # print(idx)
-            latent_ = latent[idx, :].copy()
+            latent_ = latent[idx, :].copy()  # (K, k) matrix
             action_space_size = arms
         else:
             latent_ = latent.copy()
             action_space_size = action_size
+
+        original_latent = latent_.copy()    
+        if mode == "partial":
+            # inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+            #                                    bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
+            m = cfg.num_visibles
+            invisible = original_latent[:, m:].copy() # (K, k-m)
+            inherent_rewards = invisible @ original_params[m:].copy()
+            
+            latent_ = original_latent[:, :m].copy()
+            decoder = decoder[:, :m].copy()
+            reward_params = original_params[:m].copy()
+        else:
+            inherent_rewards = 0.
         
         print(f"Running seed : {random_state_}, Shape of the latent features : {latent_.shape}")
         # print(latent)
@@ -121,6 +130,7 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
         expected_reward = latent_set @ reward_params + inherent_rewards
         
         if t == 0:
+            print(f"Shape of the decoder mapping : {decoder.shape},\tNumber of reward parameters : {reward_params.shape[0]},\tdim(action matrix) : {action_set.shape}")
             print(f"Mode : {mode}\tFixed arm set : {(action_size == arms)}\tReward range : [{np.amin(expected_reward):.5f}, {np.amax(expected_reward):.5f}]")
         realized_reward = expected_reward + reward_noise
         optimal_arm = np.argmax(expected_reward)
@@ -235,8 +245,8 @@ if __name__ == "__main__":
         context_label = cfg.context_std
     
     if cfg.seed_mode:
-        RESULT_PATH = f"{MOTHER_PATH}/seed_comparison4/results/{PATH_DICT[(cfg.mode, path_flag)]}"
-        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparison4/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
+        RESULT_PATH = f"{MOTHER_PATH}/seed_comparison2/results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparison2/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     else:
         RESULT_PATH = f"{MOTHER_PATH}/results/{PATH_DICT[(cfg.mode, path_flag)]}"
         FIGURE_PATH = f"{MOTHER_PATH}/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
@@ -251,15 +261,20 @@ if __name__ == "__main__":
                           upper_bound=cfg.map_upper_bound, uniform_rng=cfg.map_uniform_rng, random_state=SEED+1)
     
     ## generate the true parameter -> corresponds to "mu"
-    if cfg.mode == "partial":
-        Z = Z[:, :m]            # (M, k) -> (M, m)
-        A = A[:, :m]            # (d, k) -> (d, m)
-        true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                  bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    # if cfg.mode == "partial":
+    #     Z = Z[:, :m]            # (M, k) -> (M, m)
+    #     A = A[:, :m]            # (d, k) -> (d, m)
+    #     # true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+    #     #                           bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    #     true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+    #                               bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
 
-    else:
-        true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                  bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    # else:
+    #     true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+    #                               bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    
+    true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+                              bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
 
     regret_results = dict()
     error_results = dict()
@@ -275,7 +290,6 @@ if __name__ == "__main__":
         if cfg.check_specs:
             print(f"Context std : {context_std:.6f}, Original seed : {SEED}, Number of influential variables : {m}")
             print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in Z]):.4f}")
-            print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
             print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
         
         ## run an experiment
