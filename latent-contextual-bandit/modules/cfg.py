@@ -10,6 +10,7 @@ def get_cfg():
     
     parser.add_argument("--seed_mode", action="store_true")
     parser.add_argument("--mode", type=str, choices=['full', 'partial'])
+    parser.add_argument("--model", type=str, choices=["linucb", "lints", "plu"])
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--alphas", type=float, nargs="+")
     parser.add_argument("--trials", type=int, default=3)

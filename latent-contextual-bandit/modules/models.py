@@ -80,9 +80,9 @@ class PartialLinUCB(LinUCB):
         
 
 class LinTS(ContextualBandit):
-    def __init__(self, d, alpha):
+    def __init__(self, d, alpha, lbda):
         self.alpha = alpha
-        self.Binv = np.identity(d)
+        self.Binv = (1 / lbda) * np.identity(d)
         self.xty = np.zeros(d)
         self.theta_hat = np.zeros(d)
     
