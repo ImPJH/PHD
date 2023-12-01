@@ -49,6 +49,7 @@ def get_cfg():
     parser.add_argument("--reward_std", "-RNS", type=float, default=0.1)
     
     parser.add_argument("--param_dist", "-PD", type=str, default="uniform")
+    parser.add_argument("--bias_dist", "-BD", type=str, default="uniform")
     parser.add_argument("--param_bound", "-PB", type=float, default=1.)
     parser.add_argument("--param_uniform_rng", "-PUR", type=float, default=None, nargs=2)
     parser.add_argument("--param_disjoint", action="store_true")

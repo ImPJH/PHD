@@ -4,7 +4,6 @@ from util import *
 
 MODEL_DICT = {
     "linucb": LinUCB,
-    "linegreedy": LineGreedy,
     "lints": LinTS
 }
 
@@ -216,11 +215,11 @@ if __name__ == "__main__":
         A = A[:, :m]            # (d, k) -> (d, m)
         true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
                                   bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
-        models = ["linucb", "linegreedy", "lints", "plu"]
+        models = ["linucb", "lints", "plu"]
     else:
         true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
                                   bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
-        models = ["linucb", "linegreedy", "lints"]
+        models = ["linucb", "lints"]
     
     regret_results = dict()
     for model in models:
