@@ -22,14 +22,13 @@ PATH_DICT = {
     ("partial"): "partial/vary/",
 }
 
-def run_trials(model_name:str, mode:str, trials:int, alpha:float, arms:int, lbda:float, epsilon:float, horizon:int, 
-               latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
-               feat_bound:float, feat_bound_method:str, random_state:int, is_fixed:str, egreedy:bool=False, verbose:bool=False):
+def run_trials(model_name:str, mode:str, trials:int, alpha:float, arms:int, lbda:float, horizon:int, latent:np.ndarray, 
+               decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
+               feat_bound:float, feat_bound_method:str, random_state:int, is_fixed:str, verbose:bool=False):
     obs_dim, latent_dim = decoder.shape
     action_size = latent.shape[0]
     
     regret_container = np.zeros(trials, dtype=object)
-        
     for trial in range(trials):
         if mode == "full":
             assert model_name != "plu"
@@ -43,7 +42,7 @@ def run_trials(model_name:str, mode:str, trials:int, alpha:float, arms:int, lbda
         random_state_ = random_state + (11111*(trial+1)) + int(11111*alpha) + (11111*arms)
         
         if mode == "partial":
-            inherent_rewards = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+            inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
                                                bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
         else:
             inherent_rewards = 0.
@@ -58,7 +57,6 @@ def run_trials(model_name:str, mode:str, trials:int, alpha:float, arms:int, lbda
             action_space_size = action_size
         
         print(f"Running seed : {random_state_}, Shape of the latent features : {latent_.shape}")
-        # print(latent)
         regrets = run(model_name=model_name, mode=mode, agent=agent, horizon=horizon, action_size=action_space_size, arms=arms, latent=latent_, 
                       decoder=decoder, reward_params=reward_params, inherent_rewards=inherent_rewards, noise_dist=noise_dist, noise_std=noise_std, 
                       feat_bound=feat_bound, feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
@@ -228,18 +226,18 @@ if __name__ == "__main__":
                 key = MODEL_DICT[model].__name__
             else:
                 key = PartialLinUCB.__name__
-            print(f"Model : {key}")
+            print(f"Model : {key}, Feature : {cfg.feat_dist}, Bias : {cfg.bias_dist}, Parameter : {cfg.param_dist}")
             print(f"Context std : {context_std:.6f}, Original seed : {SEED}, Number of influential variables : {m}")
             print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in Z]):.4f}")
             print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
             print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
             
-        regrets = run_trials(model_name=model, mode=cfg.mode, trials=cfg.trials, alpha=ALPHAS[0], arms=num_actions[0], lbda=cfg.lbda, epsilon=cfg.epsilon, 
-                             horizon=T, latent=Z, decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
+        regrets = run_trials(model_name=model, mode=cfg.mode, trials=cfg.trials, alpha=ALPHAS[0], arms=num_actions[0], lbda=cfg.lbda, horizon=T, 
+                             latent=Z, decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
                              feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED, is_fixed=run_flag)
         regret_results[key] = regrets
     
-    fname = f"{cfg.mode}_seed_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_{cfg.latent_bound_method}_feat_{cfg.feat_dist}_map_{cfg.map_dist}_param_{cfg.param_dist}"
+    fname = f"{cfg.mode}_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_{cfg.latent_bound_method}_feat_{cfg.feat_dist}_bias_{cfg.bias_dist}_map_{cfg.map_dist}_param_{cfg.param_dist}"
     fig = show_result(regrets=regret_results, feat_dist_label=cfg.feat_dist, feat_disjoint=cfg.feat_disjoint, 
                       context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)

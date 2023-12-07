@@ -29,16 +29,15 @@ TRIALS=10 # number of trials
 IFS=','
 
 # for seed in {300..399}; do
+echo "Full Mode"
 for seed in $seeds; do
     echo "Context Noise is 0"
-    echo "Full Mode"
     echo "When a context set is fixed during a given horizon"
     python main_vary.py --mode full --alphas 1.0 --trials $TRIALS --action_spaces $M --num_actions 10 15 20 25 30 --obs_dim $d --latent_dim $k --horizon $T --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std 0 --reward_std 0.1 --param_dist uniform --param_bound 1 --param_uniform_rng -1 1 --param_disjoint --check_specs --seed_mode --fixed
     echo "When a context set is not fixed during a given horizon"
     python main_vary.py --mode full --alphas 1.0 --trials $TRIALS --action_spaces $M --num_actions 10 15 20 25 30 --obs_dim $d --latent_dim $k --horizon $T --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std 0 --reward_std 0.1 --param_dist uniform --param_bound 1 --param_uniform_rng -1 1 --param_disjoint --check_specs --seed_mode
 
     echo "Context Noise is 1 over sqrt(T)"
-    echo "Full Mode"
     echo "When a context set is fixed during a given horizon"
     python main_vary.py --mode full --alphas 1.0 --trials $TRIALS --action_spaces $M --num_actions 10 15 20 25 30 --obs_dim $d --latent_dim $k --horizon $T --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std T-0.5 --reward_std 0.1 --param_dist uniform --param_bound 1 --param_uniform_rng -1 1 --param_disjoint --check_specs --seed_mode --fixed
     echo "When a context set is not fixed during a given horizon"
