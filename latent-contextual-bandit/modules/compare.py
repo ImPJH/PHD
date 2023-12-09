@@ -22,6 +22,21 @@ PATH_DICT = {
     ("partial"): "partial/vary/",
 }
 
+DIST_DICT = {
+    "gaussian": "g",
+    "uniform": "u"
+}
+
+DEP_DICT = {
+    True: "indep",
+    False: "dep"
+}
+
+METHOD_DICT = {
+    "scaling": "s",
+    "clipping": "c"
+}
+
 def run_trials(model_name:str, mode:str, trials:int, alpha:float, arms:int, lbda:float, horizon:int, latent:np.ndarray, 
                decoder:np.ndarray, reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:Tuple[float], 
                feat_bound:float, feat_bound_method:str, random_state:int, is_fixed:str, verbose:bool=False):
@@ -237,7 +252,10 @@ if __name__ == "__main__":
                              feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED, is_fixed=run_flag)
         regret_results[key] = regrets
     
-    fname = f"{cfg.mode}_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_{cfg.latent_bound_method}_feat_{cfg.feat_dist}_bias_{cfg.bias_dist}_map_{cfg.map_dist}_param_{cfg.param_dist}"
+    fname = (f"{cfg.mode}_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_" 
+             f"{METHOD_DICT[cfg.latent_bound_method]}_feat_{DIST_DICT[cfg.feat_dist]}_"
+             f"{DEP_DICT[cfg.feat_disjoint]}_bias_{DIST_DICT[cfg.bias_dist]}_map_{DIST_DICT[cfg.map_dist]}_"
+             f"param_{DIST_DICT[cfg.param_dist]}_{DEP_DICT[cfg.param_disjoint]}")
     fig = show_result(regrets=regret_results, feat_dist_label=cfg.feat_dist, feat_disjoint=cfg.feat_disjoint, 
                       context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)
