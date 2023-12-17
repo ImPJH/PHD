@@ -42,19 +42,19 @@ def run_trials(model_name:str, mode:str, trials:int, alpha:float, arms:int, lbda
                feat_bound:float, feat_bound_method:str, random_state:int, is_fixed:str, verbose:bool=False):
     obs_dim, latent_dim = decoder.shape
     action_size = latent.shape[0]
-    
+    model_alpha = alpha[model_name]
     regret_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
         if mode == "full":
             assert model_name != "plu"
-            agent = MODEL_DICT[model_name](d=obs_dim, alpha=alpha, lbda=lbda)
+            agent = MODEL_DICT[model_name](d=obs_dim, alpha=model_alpha, lbda=lbda)
         else:
             if model_name == "plu": 
-                agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=alpha, lbda=lbda)
+                agent = PartialLinUCB(d=obs_dim, arms=arms, alpha=model_alpha, lbda=lbda)
             else:
-                agent = MODEL_DICT[model_name](d=obs_dim, alpha=alpha, lbda=lbda)
-        print(f"\u03B1={alpha},\t|A|={arms},\tmodel={agent.__class__.__name__}")
-        random_state_ = random_state + (11111*(trial+1)) + int(11111*alpha) + (11111*arms)
+                agent = MODEL_DICT[model_name](d=obs_dim, alpha=model_alpha, lbda=lbda)
+        print(f"model={agent.__class__.__name__},\t\u03B1={model_alpha},\t|A|={arms}")
+        random_state_ = random_state + (11111*(trial+1)) + int(11111*model_alpha) + (11111*arms)
         
         if mode == "partial":
             inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
@@ -188,7 +188,13 @@ if __name__ == "__main__":
     m = cfg.num_visibles
     T = cfg.horizon
     SEED = cfg.seed
-    ALPHAS = cfg.alphas
+    plu_alpha_1 = cfg.reward_std * np.sqrt(d * np.log(1 + (T * (cfg.obs_feature_bound ** 2))) / cfg.delta)
+    plu_alpha_2 = cfg.param_bound
+    ALPHAS = {
+        "linucb": 1 + np.sqrt(np.log(2/cfg.delta)/2),
+        "lints": cfg.reward_std * np.sqrt(9 * d * np.log(T / cfg.delta)),
+        "plu": 1 + (plu_alpha_2 / plu_alpha_1)
+    }
     
     if cfg.mode == "full":
         if cfg.fixed:
@@ -247,7 +253,7 @@ if __name__ == "__main__":
             print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
             print(f"L2 norm of the true mu : {l2norm(true_mu):.4f}")
             
-        regrets = run_trials(model_name=model, mode=cfg.mode, trials=cfg.trials, alpha=ALPHAS[0], arms=num_actions[0], lbda=cfg.lbda, horizon=T, 
+        regrets = run_trials(model_name=model, mode=cfg.mode, trials=cfg.trials, alpha=ALPHAS, arms=num_actions[-1], lbda=cfg.lbda, horizon=T, 
                              latent=Z, decoder=A, reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=(context_std, cfg.reward_std), 
                              feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED, is_fixed=run_flag)
         regret_results[key] = regrets
@@ -255,7 +261,7 @@ if __name__ == "__main__":
     fname = (f"{cfg.mode}_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_" 
              f"{METHOD_DICT[cfg.latent_bound_method]}_feat_{DIST_DICT[cfg.feat_dist]}_"
              f"{DEP_DICT[cfg.feat_disjoint]}_bias_{DIST_DICT[cfg.bias_dist]}_map_{DIST_DICT[cfg.map_dist]}_"
-             f"param_{DIST_DICT[cfg.param_dist]}_{DEP_DICT[cfg.param_disjoint]}")
+             f"param_{DIST_DICT[cfg.param_dist]}_{DEP_DICT[cfg.param_disjoint]}_arm_{num_actions[-1]}")
     fig = show_result(regrets=regret_results, feat_dist_label=cfg.feat_dist, feat_disjoint=cfg.feat_disjoint, 
                       context_label=context_label, reward_label=str(cfg.reward_std))
     save_plot(fig, path=FIGURE_PATH, fname=fname)

@@ -12,7 +12,7 @@ def get_cfg():
     parser.add_argument("--mode", type=str, choices=['full', 'partial'])
     parser.add_argument("--model", type=str, choices=["linucb", "lints", "plu"])
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--alphas", type=float, nargs="+")
+    parser.add_argument("--alphas", type=float, nargs="+", default=None)
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--agent_type", type=str)
     parser.add_argument("--check_specs", action="store_true")
@@ -55,6 +55,7 @@ def get_cfg():
     parser.add_argument("--param_disjoint", action="store_true")
     
     parser.add_argument("--filetype", type=str, choices=["pickle", "json"], default="pickle")
+    parser.add_argument("--delta", type=float, default=0.1)
     # parser.add_argument("--is_control", action="store_true")
     
     return parser.parse_args()
