@@ -47,7 +47,6 @@ class LineGreedy(LinUCB):
     ## epsilon greedy linear bandit
     def __init__(self, d, alpha, lbda):
         super().__init__(d, alpha, lbda)
-        self.t = 0
         
     def choose(self, x):
         self.t += 1
