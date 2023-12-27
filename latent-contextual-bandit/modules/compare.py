@@ -14,7 +14,7 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
-MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
+MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/final"
 
 PATH_DICT = {
     ("full", "fixed"): "full/fixed_vary/",
@@ -157,8 +157,8 @@ def show_result(regrets:dict, feat_dist_label:str, feat_disjoint:bool, context_l
         ax1.plot(np.mean(item, axis=0), label=key)
     ax1.grid(True)
     ax1.set_xlabel("Round")
-    ax1.set_ylabel(r"$R_t$")
-    ax1.set_title(r"$\bar{R}_t$")
+    ax1.set_ylabel(r"Regret")
+    ax1.set_title(r"10 Trials Average $R_T$")
     ax1.legend()
     
     for key in regrets:
@@ -169,12 +169,13 @@ def show_result(regrets:dict, feat_dist_label:str, feat_disjoint:bool, context_l
         ax2.fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
     ax2.grid(True)
     ax2.set_xlabel("Round")
-    ax2.set_ylabel(r"$R_t$")
-    ax2.set_title(r"$\bar{R}_t \pm 1SD$")
+    ax2.set_ylabel("Regret")
+    ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
     ax2.legend()
     
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, seed={SEED}, num_visibles={cfg.num_visibles}")
+    fig.tight_layout()    
+    # fig.tight_layout(rect=[0, 0, 1, 0.95])
+    # fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, seed={SEED}, num_visibles={cfg.num_visibles}")
     return fig
 
 if __name__ == "__main__":

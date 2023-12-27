@@ -169,8 +169,9 @@ def show_result(regrets:dict, feat_dist_label:str, feat_disjoint:bool, context_l
     ax2.set_title(r"$\bar{R}_t \pm 1SD$")
     ax2.legend()
     
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, seed={SEED}, num_visibles={cfg.num_visibles}")
+    fig.tight_layout()    
+    # fig.tight_layout(rect=[0, 0, 1, 0.95])
+    # fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, seed={SEED}, num_visibles={cfg.num_visibles}")
     return fig
 
 if __name__ == "__main__":

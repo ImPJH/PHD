@@ -9,7 +9,7 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
-MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules"
+MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/final"
 
 PATH_DICT = {
     ("full", "fixed"): "full/fixed_vary/",
@@ -152,56 +152,34 @@ def run(mode:str, agent:Union[LinUCB, LineGreedy, PartialLinUCB], horizon:int, a
     return np.cumsum(regrets), errors
 
 
-def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 10)):
-    NROWS, NCOLS = 2, 2
-    fig, ax = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
+def show_result(regrets:dict, errors:dict, label_name:str, feat_dist_label:str, feat_disjoint:bool, context_label:str, reward_label:str, figsize:tuple=(14, 5)):
+    NROWS, NCOLS = 1, 2
+    fig, (ax1, ax2) = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
     
     for key in regrets:
         item = regrets[key]
-        ax[0][0].plot(np.mean(item, axis=0), label=f"{label_name}={key}")
-    ax[0][0].grid(True)
-    ax[0][0].set_xlabel("Round")
-    ax[0][0].set_ylabel(r"$R_t$")
-    ax[0][0].set_title(r"$\bar{R}_t$")
-    ax[0][0].legend()
+        ax1.plot(np.mean(item, axis=0), label=f"{label_name}={key}")
+    ax1.grid(True)
+    ax1.set_xlabel("Round")
+    ax1.set_ylabel("Regret")
+    ax1.set_title(r"10 Trials Average $R_T$")
+    ax1.legend()
     
     for key in regrets:
         item = regrets[key]
         mean = np.mean(item, axis=0)
         std = np.std(item, axis=0, ddof=1)
-        ax[0][1].plot(mean, label=f"{label_name}={key}")
-        ax[0][1].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
-    ax[0][1].grid(True)
-    ax[0][1].set_xlabel("Round")
-    ax[0][1].set_ylabel(r"$R_t$")
-    ax[0][1].set_title(r"$\bar{R}_t \pm 1SD$")
-    ax[0][1].legend()
+        ax2.plot(mean, label=f"{label_name}={key}")
+        ax2.fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
+    ax2.grid(True)
+    ax2.set_xlabel("Round")
+    ax2.set_ylabel("Regret")
+    ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
+    ax2.legend()
     
-    for key in errors:
-        item = errors[key]
-        ax[1][0].plot(np.mean(item, axis=0), label=f"{label_name}={key}")
-    ax[1][0].grid(True)
-    ax[1][0].set_xlabel("Round")
-    ax[1][0].set_ylabel(r"${\Vert \hat{\theta}_t - \theta_*\Vert}_2$")
-    ax[1][0].set_title("Parameter Empirical Error")
-    ax[1][0].set_ylim(-0.1, None)
-    ax[1][0].legend()
-    
-    for key in errors:
-        item = errors[key]
-        mean = np.mean(item, axis=0)
-        std = np.std(item, axis=0, ddof=1)
-        ax[1][1].plot(mean, label=f"{label_name}={key}")
-        ax[1][1].fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
-    ax[1][1].grid(True)
-    ax[1][1].set_xlabel("Round")
-    ax[1][1].set_ylabel(r"${\Vert \hat{\theta}_t - \theta_*\Vert}_2$")
-    ax[1][1].set_title(r"Parameter Empirical Error $\pm 1SD$")
-    ax[1][1].set_ylim(-0.1, None)
-    ax[1][1].legend()
-    
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, seed={SEED}, num_visibles={cfg.num_visibles}")
+    fig.tight_layout()
+    # fig.tight_layout(rect=[0, 0, 1, 0.95])
+    # fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, seed={SEED}, num_visibles={cfg.num_visibles}")
     return fig
 
 
@@ -216,7 +194,12 @@ if __name__ == "__main__":
     m = cfg.num_visibles
     T = cfg.horizon
     SEED = cfg.seed
-    ALPHAS = cfg.alphas
+    
+    plu_alpha_1 = cfg.reward_std * np.sqrt(d * np.log(1 + (T * (cfg.obs_feature_bound ** 2))) / cfg.delta)
+    plu_alpha_2 = cfg.param_bound
+    plu_alpha = 1 + (plu_alpha_2 / plu_alpha_1)
+    
+    ALPHAS = [plu_alpha]
     
     if cfg.mode == "full":
         if cfg.fixed:
@@ -300,10 +283,10 @@ if __name__ == "__main__":
     
     ## save the results        
     if len(ALPHAS) == 1:
-        tag = f"alpha_{ALPHAS[-1]}"
+        tag = f"alpha_{ALPHAS[-1]:.4f}"
         label_name = r"$\vert \mathcal{A}_t\vert$"
     else:
-        tag = f"arm_{num_actions[-1]}"
+        tag = f"arm_{num_actions[-1]:.4f}"
         label_name = r"$\alpha$"
     
     fname = (f"{cfg.mode}_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_" 
