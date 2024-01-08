@@ -1,4 +1,5 @@
 import os
+import sys
 import pickle
 import json
 import numpy as np
@@ -304,53 +305,3 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
             json.dump(result, f)
 
     print("Result is Saved Completely!")
-
-
-def tau_min(delta:float, dimension:int, horizon:int, rho_min:float):
-    first = (16 / (rho_min ** 2)) + (8 / (3*rho_min))
-    second = np.log(2*dimension*horizon / delta)
-    return first * second
-
-
-def gamma_delta(num_arms:int, horizon:int, round:int, dimension:int, sigma:float, delta:float):
-    first = (10/3) * (2 + (sigma*np.sqrt(1 + (2*np.log(2*num_arms*horizon / delta)))))
-    second = np.log(2*dimension*horizon/delta)
-    third = np.sqrt((round*np.log(2*dimension*horizon/delta)) + (np.log(2*dimension*horizon/delta)**2))
-    return first * (second + third)
-
-
-def M_delta(round:int, dimension:int, delta:float, sigma:float):
-    inside_first = (dimension/2) * np.log(1 + (round/dimension))
-    inside_second = np.log(1/delta)
-    inside = 2 * (sigma**2) * (inside_first + inside_second)
-    return np.sqrt(inside) + 1
-
-
-def kappa_delta(num_arms:int, horizon:int, round:int, dimension:int, sigma:float, delta:float, rho_min:float):
-    if round > num_arms and round <= num_arms + tau_min(delta, dimension, horizon, rho_min):
-        return M_delta(round, dimension, delta, sigma) + gamma_delta(num_arms, horizon, round, dimension, sigma, delta)
-    first_denominator = np.sqrt(1 + (rho_min*(round-num_arms)/2))
-    second_denominator = 1 + (rho_min*(round-num_arms)/2)
-    return (M_delta(round, dimension, delta, sigma) / first_denominator) + (gamma_delta(num_arms, horizon, round, dimension, sigma, delta) / second_denominator)
-
-
-def Q_delta(num_arms:int, horizon:int, round:int, dimension:int, sigma:float, delta:float, rho_min:float, rho_max:float):
-    outside = 16 * np.sqrt(np.log(num_arms) * rho_max)
-    
-    kappa_val = 0
-    kappa_val_sq = 0
-    for s in range(num_arms, round):
-        kappa_val += kappa_delta(num_arms, horizon, s, dimension, sigma, delta, rho_min)
-        kappa_val_sq += (kappa_delta(num_arms, horizon, s, dimension, sigma, delta, rho_min) ** 2)
-        
-    inside_first = np.sqrt(kappa_val_sq * np.log(1/delta))
-    return (outside * (inside_first + kappa_val)) + (3*np.log(1/delta))
-
-
-def W_delta(num_arms:int, horizon:int, round:int, dimension:int, sigma:float, delta:float, rho_min:float, rho_max:float):
-    first = 2 * Q_delta(num_arms, horizon, round, dimension, sigma, delta, rho_min, rho_max)
-    second = sigma * np.sqrt(((1+round)/2)*np.log(1/delta))
-    third = (2*sigma + 3) * np.sqrt(1 + 2*np.log(num_arms * np.sqrt(round) / delta))
-    fourth = np.sqrt(num_arms * round)
-    return first + second + (third * fourth)
-
