@@ -1,5 +1,5 @@
 from cfg import get_cfg
-from models import *
+from models_v3 import *
 from util import *
 
 FEAT_DICT = {
@@ -46,7 +46,7 @@ def run_trials(mode:str, trials:int, arms:int, lbda:float, horizon:int, latent:n
         if mode == "full":
             agent = OFUL(d=obs_dim, lbda=lbda, reward_std=reward_noise_std, context_std=context_noise_std, horizon=horizon)
         else:
-            agent = PALO(d=obs_dim, arms=arms, lbda=lbda, reward_std=reward_noise_std, context_std=context_noise_std, horizon=horizon)
+            agent = POLO(d=obs_dim, arms=arms, lbda=lbda, reward_std=reward_noise_std, context_std=context_noise_std, horizon=horizon)
 
         random_state_ = random_state + (121212*(trial+1)) + (999999*arms)        
         if mode == "partial":
@@ -74,7 +74,7 @@ def run_trials(mode:str, trials:int, arms:int, lbda:float, horizon:int, latent:n
     # return regret_container, error_container
     return regret_container
 
-def run(mode:str, agent:Union[OFUL, PALO], horizon:int, action_size:int, arms:int, latent:np.ndarray, decoder:np.ndarray, 
+def run(mode:str, agent:Union[OFUL, POLO], horizon:int, action_size:int, arms:int, latent:np.ndarray, decoder:np.ndarray, 
         reward_params:np.ndarray, inherent_rewards:Union[np.ndarray, float], noise_dist:Tuple[str], noise_std:List[Union[float, List[float]]], 
         feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
     obs_dim, _ = decoder.shape
@@ -222,8 +222,8 @@ if __name__ == "__main__":
             path_flag = "alphas"
     
     if cfg.seed_mode:
-        RESULT_PATH = f"{MOTHER_PATH}/seed_comparisonhorizon/results/{PATH_DICT[(cfg.mode, path_flag)]}"
-        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparisonhorizon/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
+        RESULT_PATH = f"{MOTHER_PATH}/seed_comparison/results/{PATH_DICT[(cfg.mode, path_flag)]}"
+        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparison/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
     else:
         RESULT_PATH = f"{MOTHER_PATH}/results/{PATH_DICT[(cfg.mode, path_flag)]}"
         FIGURE_PATH = f"{MOTHER_PATH}/figures/{PATH_DICT[(cfg.mode, path_flag)]}"

@@ -6,7 +6,7 @@ from calculate_alpha import lints_alpha, linucb_alpha
 MODEL_DICT = {
     "linucb": LinUCB,
     "lints": LinTS,
-    "plu": PALO
+    "plu": POLO
 }
 
 FEAT_DICT = {
@@ -49,7 +49,7 @@ def run_trials(model_name:str, trials:int, arms:int, lbda:float, horizon:int, la
     regret_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
         if model_name == "plu": 
-            agent = PALO(d=obs_dim, arms=arms, lbda=lbda, reward_std=reward_noise_std, context_std=context_noise_std, horizon=horizon)
+            agent = POLO(d=obs_dim, arms=arms, lbda=lbda, reward_std=reward_noise_std, context_std=context_noise_std, horizon=horizon)
         elif model_name == "linucb":
             agent = LinUCB(d=obs_dim, alpha=linucb_alpha(delta=cfg.delta), lbda=lbda)
         elif model_name == "lints":
@@ -78,7 +78,7 @@ def run_trials(model_name:str, trials:int, arms:int, lbda:float, horizon:int, la
     return regret_container
 
 
-def run(model_name:str, agent:Union[LinUCB, LinTS, PALO], horizon:int, action_size:int, arms:int, 
+def run(model_name:str, agent:Union[LinUCB, LinTS, POLO], horizon:int, action_size:int, arms:int, 
         latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, inherent_rewards:Union[np.ndarray, float], noise_dist:Tuple[str], 
         noise_std:List[Union[float, List[float]]], feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
     # action_size, _ = latent.shape
@@ -200,8 +200,8 @@ if __name__ == "__main__":
         context_label = cfg.context_std      
             
     run_flag = "fixed"
-    RESULT_PATH = f"{MOTHER_PATH}/model_comparison_v5/results/{PATH_DICT[(cfg.mode)]}"
-    FIGURE_PATH = f"{MOTHER_PATH}/model_comparison_v5/figures/{PATH_DICT[(cfg.mode)]}"
+    RESULT_PATH = f"{MOTHER_PATH}/model_comparison/results/{PATH_DICT[(cfg.mode)]}"
+    FIGURE_PATH = f"{MOTHER_PATH}/model_comparison/figures/{PATH_DICT[(cfg.mode)]}"
     
     ## generate the latent feature
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_spaces, disjoint=cfg.feat_disjoint, 

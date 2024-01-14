@@ -29,14 +29,15 @@ if __name__ == "__main__":
     T = 10000
     maxnorm = 1
     d, arms = 10, 20
-    lbda = 5
+    lbda = 10
     delta = 1e-06
     reward_std = 0.1
-    context_std = [(t+1) ** (-0.5) for t in range(T)]
+    # context_std = [(t+1) ** (-0.5) for t in range(T)]
+    context_std = T ** (-0.5)
     
     print("alpha comparison")
     for t in range(T):
         print(f"Time : {t}", end="\t")
-        print(f"linucb : {linucb_alpha(delta) * np.sqrt(np.log(t)):.5f}", end='\t')
-        print(f"lints : {lints_alpha(T, reward_std, delta) * np.sqrt(np.log(t)):.5f}", end="\t")
-        print(f"mine : {oful_alpha(maxnorm, T, d, arms, lbda, reward_std, context_std[t]):.5f}")
+        print(f"linucb : {linucb_alpha(delta) * np.log(t):.5f}", end='\t')
+        print(f"lints : {lints_alpha(d=d, horizon=T, reward_std=reward_std, delta=delta) * np.log(t):.5f}", end="\t")
+        print(f"mine : {oful_alpha(maxnorm, T, d, arms, lbda, reward_std, context_std):.5f}")
