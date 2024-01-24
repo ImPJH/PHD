@@ -1,6 +1,6 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 1 200)
+seeds=$(python3 get_primes.py --nums 5 200)
 
 M=100000 # action space size
 d=10 # dimension of "mapped" features
