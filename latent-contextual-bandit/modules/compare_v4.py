@@ -16,7 +16,7 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
-MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/final"
+MOTHER_PATH = "./final"
 
 PATH_DICT = {
     ("full", "fixed"): "full/fixed_vary/",
@@ -160,7 +160,7 @@ def show_result(regrets:dict, figsize:tuple=(13, 5)):
     ax1.grid(True)
     ax1.set_xlabel("Round")
     ax1.set_ylabel(r"Regret")
-    ax1.set_title(r"10 Trials Average $R_T$")
+    # ax1.set_title(r"10 Trials Average $R_T$")
     ax1.legend()
     
     for key in regrets:
@@ -172,7 +172,7 @@ def show_result(regrets:dict, figsize:tuple=(13, 5)):
     ax2.grid(True)
     ax2.set_xlabel("Round")
     ax2.set_ylabel("Regret")
-    ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
+    # ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
     ax2.legend()
     
     fig.tight_layout()    
