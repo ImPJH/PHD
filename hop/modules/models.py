@@ -28,7 +28,7 @@ class LinUCB(ContextualBandit):
         self.theta_hat = self.Vinv @ self.xty
         
         ## compute the ucb scores for each arm
-        self.alpha_ = self.alpha * np.log(self.t)
+        self.alpha_ = self.alpha * np.sqrt(np.log(self.t))
         expected = x @ self.theta_hat # (N, ) theta_T @ x_t
         width = np.sqrt(np.einsum("Ni, ij, Nj -> N", x, self.Vinv, x)) # (N, ) widths
         ucb_scores = expected + (self.alpha_ * width) # (N, ) ucb score
@@ -60,7 +60,7 @@ class LinTS(ContextualBandit):
         self.theta_hat = self.Binv @ self.xty
         
         ## parameter sampling
-        self.alpha_ = self.alpha * np.log(self.t)
+        self.alpha_ = self.alpha * np.sqrt(np.log(self.t))
         tilde_theta = np.random.multivariate_normal(mean=self.theta_hat, cov=(self.alpha_**2) * self.Binv)  # (d, ) random matrix
         
         ## compute estimates and choose the argmax
@@ -91,12 +91,12 @@ class OFUL(ContextualBandit):
     def choose(self, x):
         # x: action set at each round (N, d)
         ## compute alpha
-        maxnorm = np.amax([l2norm(x[i]) for i in range(x.shape[0])])
+        maxnorm = np.amax([l2norm(x[i]) for i in range(self.arms)])
         if isinstance(self.context_std, float):
-            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=0, lbda=self.lbda, 
+            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=self.arms, lbda=self.lbda, 
                                reward_std=self.reward_std, context_std=self.context_std)
         else:
-            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=0, lbda=self.lbda, 
+            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=self.arms, lbda=self.lbda, 
                                reward_std=self.reward_std, context_std=self.context_std[self.t-1])
 
         ## compute the ridge estimator

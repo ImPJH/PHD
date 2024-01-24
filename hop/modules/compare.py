@@ -16,7 +16,7 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
-MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/final"
+MOTHER_PATH = "./final"
 
 PATH_DICT = {
     ("full", "fixed"): "full/fixed_vary/",
@@ -56,7 +56,7 @@ def run_trials(model_name:str, trials:int, arms:int, lbda:float, horizon:int, la
             agent = LinTS(d=obs_dim, alpha=lints_alpha(d=obs_dim, horizon=horizon, reward_std=reward_noise_std, delta=cfg.delta), lbda=lbda)
         print(f"model={agent.__class__.__name__},\t|A|={arms}")
         
-        random_state_ = random_state + (121212*(trial+1)) + (999999*arms)
+        random_state_ = random_state + (13121*(trial+1)) + (1999*arms)
         inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
                                             bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
         
@@ -97,7 +97,7 @@ def run(model_name:str, agent:Union[LinUCB, LinTS, POLO], horizon:int, action_si
     
     for t in bar:
         if random_state is not None:
-            random_state_ = random_state + int(11111 * t)
+            random_state_ = random_state + int(191 * t)
             np.random.seed(random_state_)
         
         if action_size > arms:
@@ -160,7 +160,7 @@ def show_result(regrets:dict, figsize:tuple=(13, 5)):
     ax1.grid(True)
     ax1.set_xlabel("Round")
     ax1.set_ylabel(r"Regret")
-    ax1.set_title(r"10 Trials Average $R_T$")
+    # ax1.set_title(r"10 Trials Average $R_T$")
     ax1.legend()
     
     for key in regrets:
@@ -172,7 +172,7 @@ def show_result(regrets:dict, figsize:tuple=(13, 5)):
     ax2.grid(True)
     ax2.set_xlabel("Round")
     ax2.set_ylabel("Regret")
-    ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
+    # ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
     ax2.legend()
     
     fig.tight_layout()    
@@ -200,8 +200,8 @@ if __name__ == "__main__":
         context_label = cfg.context_std      
             
     run_flag = "fixed"
-    RESULT_PATH = f"{MOTHER_PATH}/model_comparison/results/{PATH_DICT[(cfg.mode)]}"
-    FIGURE_PATH = f"{MOTHER_PATH}/model_comparison/figures/{PATH_DICT[(cfg.mode)]}"
+    RESULT_PATH = f"{MOTHER_PATH}/model_comparison_v4/results/{PATH_DICT[(cfg.mode)]}"
+    FIGURE_PATH = f"{MOTHER_PATH}/model_comparison_v4/figures/{PATH_DICT[(cfg.mode)]}"
     
     ## generate the latent feature
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_spaces, disjoint=cfg.feat_disjoint, 
