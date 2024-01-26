@@ -9,15 +9,13 @@ def get_cfg():
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--seed_mode", action="store_true")
-    parser.add_argument("--mode", type=str, choices=['full', 'partial'])
-    parser.add_argument("--model", type=str, choices=["linucb", "lints", "plu"])
+    # parser.add_argument("--mode", type=str, choices=['full', 'partial'])
+    parser.add_argument("--model", type=str, choices=["linucb", "lints", "linegreedy", "hop"])
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--alphas", type=float, nargs="+", default=None)
-    parser.add_argument("--trials", type=int, default=3)
-    parser.add_argument("--agent_type", type=str)
+    parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--check_specs", action="store_true")
     parser.add_argument("--fixed", action="store_true")
-    parser.add_argument("--num_cpus", type=int, default=multiprocessing.cpu_count()//2)
         
     parser.add_argument("--action_spaces", "-A", type=int, default=10000)
     parser.add_argument("--num_actions", "-N", type=int, nargs="+")
@@ -27,8 +25,6 @@ def get_cfg():
     parser.add_argument("--horizon", "-T", type=int, default=10000)
     parser.add_argument("--seed", "-S", type=int, default=None)
     parser.add_argument("--lbda", "-L", type=float, default=1.)
-    parser.add_argument("--epsilon", "-E", type=float, default=0.1)
-    parser.add_argument("--egreedy", action="store_true")
     
     parser.add_argument("--feat_dist", "-FD", type=str, default="gaussian")
     parser.add_argument("--feat_disjoint", action="store_true")

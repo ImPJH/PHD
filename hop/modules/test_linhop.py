@@ -1,5 +1,5 @@
 from cfg import get_cfg
-from models_v3 import *
+from models import *
 from util import *
 
 FEAT_DICT = {
@@ -9,14 +9,8 @@ FEAT_DICT = {
     ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
 }
 
-MOTHER_PATH = "/home/sungwoopark/bandit-research/latent-contextual-bandit/modules/final"
-
-PATH_DICT = {
-    ("full", "fixed"): "full/fixed_vary/",
-    ("full", "unfixed"): "full/unfixed_vary/",
-    ("partial", "arms"): "partial/arms_vary/",
-    ("partial", "alphas"): "partial/alpha_vary/"
-}
+# MOTHER_PATH = "/home/sungwoopark/bandit-research/hop/modules"
+MOTHER_PATH = "./arms_vary"
 
 DIST_DICT = {
     "gaussian": "g",
@@ -33,40 +27,30 @@ METHOD_DICT = {
     "clipping": "c"
 }
 
-def run_trials(mode:str, trials:int, arms:int, lbda:float, horizon:int, latent:np.ndarray, decoder:np.ndarray, 
+def run_trials(trials:int, arms:int, lbda:float, horizon:int, latent:np.ndarray, decoder:np.ndarray, 
                reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:List[Union[float, List[float]]], 
-               feat_bound:float, feat_bound_method:str, random_state:int, is_fixed:str, verbose:bool=False):
+               feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool=False):
     obs_dim, _ = decoder.shape
-    action_size = latent.shape[0]
-    context_noise_std, reward_noise_std = noise_std
+    action_space_size = latent.shape[0]
     regret_container = np.zeros(trials, dtype=object)
     # error_container = np.zeros(trials, dtype=object)
         
     for trial in range(trials):
-        if mode == "full":
-            agent = OFUL(d=obs_dim, lbda=lbda, reward_std=reward_noise_std, context_std=context_noise_std, horizon=horizon)
-        else:
-            agent = POLO(d=obs_dim, arms=arms, lbda=lbda, reward_std=reward_noise_std, context_std=context_noise_std, horizon=horizon)
+        agent = HOPlinear(d=obs_dim, arms=arms, lbda=lbda, reward_std=cfg.reward_std, delta=cfg.delta)
 
-        random_state_ = random_state + (121212*(trial+1)) + (999999*arms)        
-        if mode == "partial":
-            inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
-                                               bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
-        else:
-            inherent_rewards = 0.
+        random_state_ = random_state + (12221*(trial+1)) + (49997*arms)        
+        inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
+                                           bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
+
         
-        if is_fixed == "fixed":
-            np.random.seed(random_state_)
-            idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
-            latent_ = latent[idx, :].copy()
-            action_space_size = arms
-        else:
-            latent_ = latent.copy()
-            action_space_size = action_size
+        np.random.seed(random_state_)
+        idx = np.random.choice(np.arange(action_space_size), size=arms, replace=False)
+        latent_ = latent[idx, :].copy()
+        action_space_size = arms        
         
         print(f"Running seed : {random_state_}, Shape of the latent features : {latent_.shape}")
-        regrets = run(mode=mode, agent=agent, horizon=horizon, action_size=action_space_size, arms=arms, latent=latent_, decoder=decoder, 
-                      reward_params=reward_params, inherent_rewards=inherent_rewards, noise_dist=noise_dist, noise_std=noise_std, 
+        regrets = run(agent=agent, horizon=horizon, latent=latent_, decoder=decoder, reward_params=reward_params, 
+                      inherent_rewards=inherent_rewards, noise_dist=noise_dist, noise_std=noise_std, 
                       feat_bound=feat_bound, feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
         # error_container[trial] = errors
@@ -74,20 +58,19 @@ def run_trials(mode:str, trials:int, arms:int, lbda:float, horizon:int, latent:n
     # return regret_container, error_container
     return regret_container
 
-def run(mode:str, agent:Union[OFUL, POLO], horizon:int, action_size:int, arms:int, latent:np.ndarray, decoder:np.ndarray, 
-        reward_params:np.ndarray, inherent_rewards:Union[np.ndarray, float], noise_dist:Tuple[str], noise_std:List[Union[float, List[float]]], 
+def run(agent:HOPlinear, horizon:int, latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, 
+        inherent_rewards:np.ndarray, noise_dist:Tuple[str], noise_std:List[Union[float, List[float]]], 
         feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
     obs_dim, _ = decoder.shape
+    arms, latent_dim = latent.shape
     context_noise_dist, reward_noise_dist = noise_dist
     context_noise_std, reward_noise_std = noise_std
     
     ## make the mapped features in advance before iteration
-    observe_space = latent @ decoder.T          # (M, k) @ (k, d) -> (M, d) or (M, m) @ (m, d) -> (M, d)
+    observe_set = latent @ decoder.T          # (K, m) @ (m, d) -> (K, d)
     decoder_inv = left_pseudo_inverse(decoder)
     obs_mu = decoder_inv.T @ reward_params  # (d, m) @ (m, ) -> (d, )
-
-    if mode == "partial":
-        obs_mu = np.concatenate([obs_mu, inherent_rewards], axis=0) # (d, ) -> (d+N, )
+    obs_mu = np.concatenate([obs_mu, inherent_rewards], axis=0) # (d, ) -> (d+N, )
     
     regrets = np.zeros(horizon, dtype=float)
     # errors = np.zeros(horizon, dtype=float)
@@ -99,14 +82,8 @@ def run(mode:str, agent:Union[OFUL, POLO], horizon:int, action_size:int, arms:in
     
     for t in bar:
         if random_state is not None:
-            random_state_ = random_state + int(11111 * t)
+            random_state_ = random_state + int(21112 * t)
             np.random.seed(random_state_)
-        
-        if action_size > arms:
-            idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
-        else:
-            idx = np.arange(action_size)
-        latent_set, mapped_set = latent[idx, :], observe_space[idx, :]
         
         ## sample the context noise and construct the observable features
         if isinstance(context_noise_std, float):
@@ -115,21 +92,19 @@ def run(mode:str, agent:Union[OFUL, POLO], horizon:int, action_size:int, arms:in
         else:
             context_noise = subgaussian_noise(distribution=context_noise_dist, size=(arms*obs_dim), 
                                               std=context_noise_std[t], random_state=random_state_).reshape(arms, d)            
-        action_set = mapped_set + context_noise
+        action_set = observe_set + context_noise
         
         ## bound the action set
         if feat_bound_method is not None:
             bounding(type="feature", v=action_set, bound=feat_bound, method=feat_bound_method)
-        
-        if mode == "partial":
-            action_set = np.concatenate([action_set, np.identity(arms)], axis=1)
+        action_set = np.concatenate([action_set, np.identity(arms)], axis=1)
         
         ## sample the reward noise and compute the reward
         reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=arms, std=reward_noise_std, random_state=random_state_)
-        expected_reward = latent_set @ reward_params + inherent_rewards
+        expected_reward = latent @ reward_params + inherent_rewards
         
         if t == 0:
-            print(f"Mode : {mode}\tFixed arm set : {(action_size == arms)}\tReward range : [{np.amin(expected_reward):.5f}, {np.amax(expected_reward):.5f}]")
+            print(f"Number of actions : {action_set.shape[0]}\tReward range : [{np.amin(expected_reward):.5f}, {np.amax(expected_reward):.5f}]")
         realized_reward = expected_reward + reward_noise
         optimal_arm = np.argmax(expected_reward)
         optimal_reward = expected_reward[optimal_arm]
@@ -189,7 +164,7 @@ if __name__ == "__main__":
     cfg = get_cfg()
     
     ## hyper-parameters
-    action_spaces = cfg.action_spaces # int
+    action_space_size = cfg.action_spaces # int
     num_actions = cfg.num_actions # List[int]
     d = cfg.obs_dim
     k = cfg.latent_dim
@@ -206,50 +181,25 @@ if __name__ == "__main__":
         context_std = float(cfg.context_std)
         context_label = cfg.context_std
     
-    if cfg.mode == "full":
-        if cfg.fixed:
-            path_flag = "fixed"
-            run_flag = "fixed"
-        else:
-            path_flag = "unfixed"
-            run_flag = "unfixed"
-            
-    if cfg.mode == "partial":
-        run_flag = "fixed"
-        if len(num_actions) > 1:
-            path_flag = "arms"
-        else:
-            path_flag = "alphas"
-    
-    if cfg.seed_mode:
-        RESULT_PATH = f"{MOTHER_PATH}/seed_comparison/results/{PATH_DICT[(cfg.mode, path_flag)]}"
-        FIGURE_PATH = f"{MOTHER_PATH}/seed_comparison/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
-    else:
-        RESULT_PATH = f"{MOTHER_PATH}/results/{PATH_DICT[(cfg.mode, path_flag)]}"
-        FIGURE_PATH = f"{MOTHER_PATH}/figures/{PATH_DICT[(cfg.mode, path_flag)]}"
+    RESULT_PATH = f"{MOTHER_PATH}/results/arms"
+    FIGURE_PATH = f"{MOTHER_PATH}/figures/arms"
     
     ## generate the latent feature
-    Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_spaces, disjoint=cfg.feat_disjoint, 
-                        cov_dist=cfg.feat_cov_dist, bound=cfg.latent_feature_bound, bound_method=cfg.latent_bound_method, 
-                        uniform_rng=cfg.feat_uniform_rng, random_state=SEED)
+    Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, 
+                        bound=cfg.latent_feature_bound, bound_method=cfg.latent_bound_method, uniform_rng=cfg.feat_uniform_rng, random_state=SEED)
     
     ## generate the decoder mapping
     A = mapping_generator(latent_dim=k, obs_dim=d, distribution=cfg.map_dist, lower_bound=cfg.map_lower_bound, 
                           upper_bound=cfg.map_upper_bound, uniform_rng=cfg.map_uniform_rng, random_state=SEED+1)
     
     ## generate the true parameter -> corresponds to "mu"
-    if cfg.mode == "partial":
-        Z = Z[:, :m]            # (M, k) -> (M, m)
-        A = A[:, :m]            # (d, k) -> (d, m)
-        true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                  bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
-
-    else:
-        true_mu = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                                  bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    Z = Z[:, :m]  # (M, k) -> (M, m)
+    A = A[:, :m]  # (d, k) -> (d, m)
+    true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+                              bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
 
     regret_results = dict()
-    error_results = dict()
+    # error_results = dict()
     for arms in num_actions:
         if cfg.check_specs:
             print(f"Context std : {cfg.context_std}, Original seed : {SEED}, Number of influential variables : {m}")
@@ -258,19 +208,18 @@ if __name__ == "__main__":
             print(f"Lambda : {cfg.lbda}\tL2 norm of the true mu : {l2norm(true_mu):.4f}")
         
         ## run an experiment
-        regrets = run_trials(mode=cfg.mode, trials=cfg.trials, arms=arms, lbda=cfg.lbda, horizon=T, latent=Z, decoder=A, reward_params=true_mu, 
-                             noise_dist=("gaussian", "gaussian"), noise_std=[context_std, cfg.reward_std], feat_bound=cfg.obs_feature_bound, 
-                             feat_bound_method=cfg.obs_bound_method, random_state=SEED, is_fixed=run_flag)
+        regrets = run_trials(trials=cfg.trials, arms=arms, lbda=cfg.lbda, horizon=T, latent=Z, decoder=A, 
+                             reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=[context_std, cfg.reward_std], 
+                             feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
         
         regret_results[arms] = regrets
         # error_results[arms] = errors
 
     ## save the results        
     label_name = r"$\vert \mathcal{A}_t\vert$"
-    fname = (f"{cfg.mode}_{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_" 
-             f"{METHOD_DICT[cfg.latent_bound_method]}_feat_{DIST_DICT[cfg.feat_dist]}_"
-             f"{DEP_DICT[cfg.feat_disjoint]}_bias_{DIST_DICT[cfg.bias_dist]}_map_{DIST_DICT[cfg.map_dist]}_"
-             f"param_{DIST_DICT[cfg.param_dist]}_{DEP_DICT[cfg.param_disjoint]}")
+    fname = (f"{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_{METHOD_DICT[cfg.latent_bound_method]}_" 
+             f"feat_{DIST_DICT[cfg.feat_dist]}_{DEP_DICT[cfg.feat_disjoint]}_map_{DIST_DICT[cfg.map_dist]}_"
+             f"bias_{DIST_DICT[cfg.bias_dist]}_param_{DIST_DICT[cfg.param_dist]}_{DEP_DICT[cfg.param_disjoint]}")
     fig = show_result(regrets=regret_results, label_name=label_name)
     save_plot(fig, path=FIGURE_PATH, fname=fname)
     save_result(result=vars(cfg), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
