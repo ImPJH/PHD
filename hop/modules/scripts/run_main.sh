@@ -13,7 +13,7 @@ param_bound=1
 T=50000 # total horizon
 # K=15
 delta=0.00001
-TRIALS=10 # number of trials
+TRIALS=3 # number of trials
 lambda=1
 
 echo "Partial Mode"
@@ -22,6 +22,8 @@ IFS=','
 # for seed in {350..399}; do
 for seed in $seeds; do
     echo "Context Noise is 0"
+    python test_linhop.py --trials $TRIALS --action_spaces $M --num_actions 10 15 --obs_dim $d --latent_dim $k --num_visibles 1 --horizon $T --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std 0 --reward_std 0.1 --param_dist gaussian --param_bound 1 --param_disjoint --bias_dist gaussian --check_specs --delta $delta
+
     python test_linhop.py --trials $TRIALS --action_spaces $M --num_actions 10 20 30 40 --obs_dim $d --latent_dim $k --num_visibles 1 --horizon $T --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std 0 --reward_std 0.1 --param_dist gaussian --param_bound 1 --param_disjoint --bias_dist gaussian --check_specs --delta $delta
     python test_linhop.py --trials $TRIALS --action_spaces $M --num_actions 10 20 30 40 --obs_dim $d --latent_dim $k --num_visibles $half --horizon $T --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std 0 --reward_std 0.1 --param_dist gaussian --param_bound 1 --param_disjoint --bias_dist gaussian --check_specs --delta $delta
     python test_linhop.py --trials $TRIALS --action_spaces $M --num_actions 10 20 30 40 --obs_dim $d --latent_dim $k --num_visibles $almost --horizon $T --seed "$seed" --feat_dist gaussian --feat_disjoint --latent_feature_bound 1 --obs_feature_bound 1 --latent_bound_method scaling --map_dist uniform --map_upper_bound 1 --context_std 0 --reward_std 0.1 --param_dist gaussian --param_bound 1 --param_disjoint --bias_dist gaussian --check_specs --delta $delta

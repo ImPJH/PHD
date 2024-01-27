@@ -129,30 +129,48 @@ def run(agent:HOPlinear, horizon:int, latent:np.ndarray, decoder:np.ndarray, rew
     return np.cumsum(regrets)
 
 
-def show_result(regrets:dict, label_name:str, figsize:tuple=(14, 5)):
-    NROWS, NCOLS = 1, 2
-    fig, (ax1, ax2) = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
+def show_result(regrets:dict, horizon:int, label_name:str, figsize:tuple=(6, 5)):
+    # NROWS, NCOLS = 1, 2
+    # fig, (ax1, ax2) = plt.subplots(nrows=NROWS, ncols=NCOLS, figsize=figsize)
     
-    for key in regrets:
-        item = regrets[key]
-        ax1.plot(np.mean(item, axis=0), label=f"{label_name}={key}")
-    ax1.grid(True)
-    ax1.set_xlabel("Round")
-    ax1.set_ylabel("Regret")
-    ax1.set_title(r"10 Trials Average $R_T$")
-    ax1.legend()
+    # for key in regrets:
+    #     item = regrets[key]
+    #     ax1.plot(np.mean(item, axis=0), label=f"{label_name}={key}")
+    # ax1.grid(True)
+    # ax1.set_xlabel("Round")
+    # ax1.set_ylabel("Regret")
+    # # ax1.set_title(r"10 Trials Average $R_T$")
+    # ax1.legend()
     
-    for key in regrets:
-        item = regrets[key]
+    # for key in regrets:
+    #     item = regrets[key]
+    #     mean = np.mean(item, axis=0)
+    #     std = np.std(item, axis=0, ddof=1)
+    #     ax2.plot(mean, label=f"{label_name}={key}")
+    #     ax2.fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
+    # ax2.grid(True)
+    # ax2.set_xlabel("Round")
+    # ax2.set_ylabel("Regret")
+    # # ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
+    # ax2.legend()
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # 마커 스타일과 색상 설정
+    # markers = ['o', 's', '^', 'd', 'p']
+    colors = ['blue', 'orange', 'green', 'red', 'purple']
+    
+    # 각 알고리즘에 대해 에러바와 함께 그래프 그리기
+    for color, (key, item) in zip(colors, regrets.items()):
         mean = np.mean(item, axis=0)
         std = np.std(item, axis=0, ddof=1)
-        ax2.plot(mean, label=f"{label_name}={key}")
-        ax2.fill_between(np.arange(T), mean-std, mean+std, alpha=0.2)
-    ax2.grid(True)
-    ax2.set_xlabel("Round")
-    ax2.set_ylabel("Regret")
-    ax2.set_title(r"10 Trials Average $R_T \pm 1SD$")
-    ax2.legend()
+        ax.errorbar(np.arange(horizon), mean, yerr=std, 
+                    label=f"{label_name}={key}", fmt='o', color=color, capsize=5)
+    
+    ax.grid(True)
+    ax.set_xlabel("Round (t)")
+    ax.set_ylabel("Cumulative Regret")
+    ax.legend()
     
     fig.tight_layout()
     # fig.tight_layout(rect=[0, 0, 1, 0.95])
@@ -220,6 +238,6 @@ if __name__ == "__main__":
     fname = (f"{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_{METHOD_DICT[cfg.latent_bound_method]}_" 
              f"feat_{DIST_DICT[cfg.feat_dist]}_{DEP_DICT[cfg.feat_disjoint]}_map_{DIST_DICT[cfg.map_dist]}_"
              f"bias_{DIST_DICT[cfg.bias_dist]}_param_{DIST_DICT[cfg.param_dist]}_{DEP_DICT[cfg.param_disjoint]}")
-    fig = show_result(regrets=regret_results, label_name=label_name)
+    fig = show_result(regrets=regret_results, horizon=T, label_name=label_name)
     save_plot(fig, path=FIGURE_PATH, fname=fname)
     save_result(result=vars(cfg), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)

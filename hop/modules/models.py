@@ -140,7 +140,7 @@ class HOPlinear(ContextualBandit):
         # x: action set at each round (N, d)
         self.t += 1
         ## compute alpha
-        alpha = hop_alpha(lbda=self.lbda, reward_std=self.reward_std, arms=self.arms, delta=self.delta)
+        alpha = hop_alpha(lbda=self.lbda, reward_std=self.reward_std, arms=self.arms, delta=self.delta) * np.sqrt(np.log(self.t))
         ## compute the ridge estimator
         self.theta_hat = self.Vinv @ self.xty
         

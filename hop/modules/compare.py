@@ -1,27 +1,15 @@
 from cfg import get_cfg
 from models import *
 from util import *
-from calculate_alpha import lints_alpha, linucb_alpha
+from calculate_alpha import *
+
+MOTHER_PATH = "./model_comparison"
 
 MODEL_DICT = {
     "linucb": LinUCB,
     "lints": LinTS,
-    "plu": POLO
-}
-
-FEAT_DICT = {
-    ("gaussian", True): r"$\sim N(0, I_k)$",
-    ("gaussian", False): r"$\sim N(0, \Sigma_k)$",
-    ("uniform", True): r"$\sim Unif_{I_k}$",
-    ("uniform", False): r"$\sim Unif_{\Sigma_k}$"
-}
-
-MOTHER_PATH = "./final"
-
-PATH_DICT = {
-    ("full", "fixed"): "full/fixed_vary/",
-    ("full", "unfixed"): "full/unfixed_vary/",
-    ("partial"): "partial/vary/",
+    "oful": OFUL,
+    "hop": HOPlinear
 }
 
 DIST_DICT = {
@@ -41,7 +29,7 @@ METHOD_DICT = {
 
 def run_trials(model_name:str, trials:int, arms:int, lbda:float, horizon:int, latent:np.ndarray, decoder:np.ndarray, 
                reward_params:np.ndarray, noise_dist:Tuple[str], noise_std:List[Union[float, List[float]]], 
-               feat_bound:float, feat_bound_method:str, random_state:int, is_fixed:str, verbose:bool=False):
+               feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool=False):
     obs_dim, _ = decoder.shape
     context_noise_std, reward_noise_std = noise_std
     action_size = latent.shape[0]
@@ -60,17 +48,12 @@ def run_trials(model_name:str, trials:int, arms:int, lbda:float, horizon:int, la
         inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
                                             bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
         
-        if is_fixed == "fixed":
-            np.random.seed(random_state_)
-            idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
-            latent_ = latent[idx, :].copy()
-            action_space_size = arms
-        else:
-            latent_ = latent.copy()
-            action_space_size = action_size
+        np.random.seed(random_state_)
+        idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
+        latent_ = latent[idx, :].copy()
         
         print(f"Running seed : {random_state_}, Shape of the latent features : {latent_.shape}")
-        regrets = run(model_name=model_name, agent=agent, horizon=horizon, action_size=action_space_size, arms=arms, latent=latent_, 
+        regrets = run(model_name=model_name, agent=agent, horizon=horizon, arms=arms, latent=latent_, 
                       decoder=decoder, reward_params=reward_params, inherent_rewards=inherent_rewards, noise_dist=noise_dist,
                       noise_std=noise_std, feat_bound=feat_bound, feat_bound_method=feat_bound_method, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
@@ -78,16 +61,15 @@ def run_trials(model_name:str, trials:int, arms:int, lbda:float, horizon:int, la
     return regret_container
 
 
-def run(model_name:str, agent:Union[LinUCB, LinTS, POLO], horizon:int, action_size:int, arms:int, 
+def run(model_name:str, agent:Union[LinUCB, LinTS, OFUL, HOPlinear], horizon:int, arms:int, 
         latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, inherent_rewards:Union[np.ndarray, float], noise_dist:Tuple[str], 
         noise_std:List[Union[float, List[float]]], feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
-    # action_size, _ = latent.shape
     obs_dim, _ = decoder.shape
     context_noise_dist, reward_noise_dist = noise_dist
     context_noise_std, reward_noise_std = noise_std
     
     ## make the mapped features in advance before iteration
-    observe_space = latent @ decoder.T   # (M, k) @ (k, d) -> (M, d) or (M, m) @ (m, d) -> (M, d)
+    observe_space = latent @ decoder.T   # (K, m) @ (m, d) -> (K, d)
     regrets = np.zeros(horizon, dtype=float)
     
     if not verbose:
@@ -99,13 +81,7 @@ def run(model_name:str, agent:Union[LinUCB, LinTS, POLO], horizon:int, action_si
         if random_state is not None:
             random_state_ = random_state + int(191 * t)
             np.random.seed(random_state_)
-        
-        if action_size > arms:
-            idx = np.random.choice(np.arange(action_size), size=arms, replace=False)
-        else:
-            idx = np.arange(action_size)
-        latent_set, mapped_set = latent[idx, :], observe_space[idx, :]
-        
+
         ## sample the context noise and construct the observable features
         if isinstance(context_noise_std, float):
             context_noise = subgaussian_noise(distribution=context_noise_dist, size=(arms*obs_dim), 
@@ -113,7 +89,7 @@ def run(model_name:str, agent:Union[LinUCB, LinTS, POLO], horizon:int, action_si
         else:
             context_noise = subgaussian_noise(distribution=context_noise_dist, size=(arms*obs_dim), 
                                               std=context_noise_std[t], random_state=random_state_).reshape(arms, d)            
-        action_set = mapped_set + context_noise
+        action_set = observe_space + context_noise
         
         ## bound the action set
         if feat_bound_method is not None:
