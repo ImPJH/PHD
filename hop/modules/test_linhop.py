@@ -1,4 +1,4 @@
-from cfg import get_cfg
+from cfg2 import get_cfg
 from models import *
 from util import *
 
@@ -10,7 +10,7 @@ FEAT_DICT = {
 }
 
 # MOTHER_PATH = "/home/sungwoopark/bandit-research/hop/modules"
-MOTHER_PATH = "./arms_vary"
+MOTHER_PATH = "./model_test"
 
 DIST_DICT = {
     "gaussian": "g",
@@ -36,7 +36,7 @@ def run_trials(trials:int, arms:int, lbda:float, horizon:int, latent:np.ndarray,
     # error_container = np.zeros(trials, dtype=object)
         
     for trial in range(trials):
-        agent = HOPlinear(d=obs_dim, arms=arms, lbda=lbda, reward_std=cfg.reward_std, delta=cfg.delta)
+        agent = HOPlinear(d=obs_dim, arms=arms, lbda=lbda, reward_std=cfg.reward_std, delta=cfg.delta, horizon=horizon)
 
         random_state_ = random_state + (12221*(trial+1)) + (49997*arms)        
         inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
@@ -158,21 +158,41 @@ def show_result(regrets:dict, horizon:int, label_name:str, figsize:tuple=(6, 5))
     
     # 마커 스타일과 색상 설정
     # markers = ['o', 's', '^', 'd', 'p']
+    label_dict = {
+        "gaussian": r"$\mathcal{N}(0,1)$",
+        "uniform": r"$\mathrm{Unif}(-1,1)$"
+    }
+    bias_label = r"$\{\delta_a\}_{a=1}^K\sim$"
+    param_label = r"$\{\theta_*^i\}_{i=1}^m\sim$"
+    
+    if label_name == r"$\vert \mathcal{A}_t\vert$":
+        title = r"$m=$" + f"{cfg.num_visibles[-1]}"
+    elif label_name == "$m$":
+        title = r"$\vert \mathcal{A}_t\vert$=" + f"{cfg.num_actions[-1]}"
+    
     colors = ['blue', 'orange', 'green', 'red', 'purple']
+    period = horizon // 10
     
     # 각 알고리즘에 대해 에러바와 함께 그래프 그리기
     for color, (key, item) in zip(colors, regrets.items()):
+        rounds = np.arange(horizon)
         mean = np.mean(item, axis=0)
         std = np.std(item, axis=0, ddof=1)
-        ax.errorbar(np.arange(horizon), mean, yerr=std, 
-                    label=f"{label_name}={key}", fmt='o', color=color, capsize=5)
+        
+        # 마커와 에러 바가 있는 라인을 주기적으로 표시
+        ax.errorbar(rounds[::period], mean[::period], yerr=std[::period], label=f"{label_name}={key}", 
+                    fmt='s', color=color, capsize=3, elinewidth=1)
+        
+        # 주기적인 마커 없이 전체 라인을 표시
+        ax.plot(rounds, mean, color=color, linewidth=2)
     
     ax.grid(True)
-    ax.set_xlabel("Round (t)")
+    ax.set_xlabel(r"Round ($t$)")
     ax.set_ylabel("Cumulative Regret")
+    ax.set_title(f"{bias_label}{label_dict[cfg.bias_dist]}, {param_label}{label_dict[cfg.param_dist]}, {title}")
     ax.legend()
     
-    fig.tight_layout()
+    fig.tight_layout()  
     # fig.tight_layout(rect=[0, 0, 1, 0.95])
     # fig.suptitle(f"$Z${FEAT_DICT[(feat_dist_label, feat_disjoint)]}, $\sigma_\eta=${context_label}, $\sigma_\epsilon=${reward_label}, seed={SEED}, num_visibles={cfg.num_visibles}")
     return fig
@@ -192,16 +212,20 @@ if __name__ == "__main__":
     
     if "T" in cfg.context_std:
         power = cfg.context_std.split("T")[-1]
-        context_std = T ** float(power)
-        # context_std = [(t+1) ** float(power) for t in range(T)]
+        if cfg.context_std_variant:
+            context_std = [(t+1) ** float(power) for t in range(T)]
+        else:
+            context_std = T ** float(power)
         context_label = f"$T^{{{power}}}$"
     else:
         context_std = float(cfg.context_std)
         context_label = cfg.context_std
     
-    RESULT_PATH = f"{MOTHER_PATH}/results/arms"
-    FIGURE_PATH = f"{MOTHER_PATH}/figures/arms"
-    
+    RESULT_PATH = f"{MOTHER_PATH}/results"
+    FIGURE_PATH = f"{MOTHER_PATH}/figures"
+
+    regret_results = dict()
+
     ## generate the latent feature
     Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=action_space_size, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, 
                         bound=cfg.latent_feature_bound, bound_method=cfg.latent_bound_method, uniform_rng=cfg.feat_uniform_rng, random_state=SEED)
@@ -210,31 +234,42 @@ if __name__ == "__main__":
     A = mapping_generator(latent_dim=k, obs_dim=d, distribution=cfg.map_dist, lower_bound=cfg.map_lower_bound, 
                           upper_bound=cfg.map_upper_bound, uniform_rng=cfg.map_uniform_rng, random_state=SEED+1)
     
-    ## generate the true parameter -> corresponds to "mu"
-    Z = Z[:, :m]  # (M, k) -> (M, m)
-    A = A[:, :m]  # (d, k) -> (d, m)
-    true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
-                              bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+    for m in cfg.num_visibles:
+        ## generate the true parameter -> corresponds to "mu"
+        Z_ = Z[:, :m]  # (M, k) -> (M, m)
+        A_ = A[:, :m]  # (d, k) -> (d, m)
+        true_mu = param_generator(dimension=m, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, 
+                                  bound=cfg.param_bound, uniform_rng=cfg.param_uniform_rng, random_state=SEED-1)
+        for arms in num_actions:
+            if cfg.check_specs:
+                print(f"Arms : {arms}, Feature : {cfg.feat_dist}, Bias : {cfg.bias_dist}, Parameter : {cfg.param_dist}")
+                print(f"Context std : {cfg.context_std}, Original seed : {SEED}, Number of influential variables : {m}")
+                print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in Z]):.4f}")
+                print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
+                print(f"Lambda : {cfg.lbda}\tL2 norm of the true mu : {l2norm(true_mu):.4f}")
 
-    regret_results = dict()
-    # error_results = dict()
-    for arms in num_actions:
-        if cfg.check_specs:
-            print(f"Context std : {cfg.context_std}, Original seed : {SEED}, Number of influential variables : {m}")
-            print(f"The maximum norm of the latent features : {np.amax([l2norm(feat) for feat in Z]):.4f}")
-            print(f"Shape of the decoder mapping : {A.shape},\tNumber of reward parameters : {true_mu.shape[0]}")
-            print(f"Lambda : {cfg.lbda}\tL2 norm of the true mu : {l2norm(true_mu):.4f}")
-        
-        ## run an experiment
-        regrets = run_trials(trials=cfg.trials, arms=arms, lbda=cfg.lbda, horizon=T, latent=Z, decoder=A, 
-                             reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=[context_std, cfg.reward_std], 
-                             feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
-        
-        regret_results[arms] = regrets
-        # error_results[arms] = errors
+            if len(num_actions) > 1:
+                assert len(cfg.num_visibles) == 1
+                key = arms
+            elif len(cfg.num_visibles) > 1:
+                assert len(num_actions) == 1
+                key = m
 
-    ## save the results        
-    label_name = r"$\vert \mathcal{A}_t\vert$"
+            ## run an experiment
+            regrets = run_trials(trials=cfg.trials, arms=arms, lbda=cfg.lbda, horizon=T, latent=Z_, decoder=A_, 
+                                reward_params=true_mu, noise_dist=("gaussian", "gaussian"), noise_std=[context_std, cfg.reward_std], 
+                                feat_bound=cfg.obs_feature_bound, feat_bound_method=cfg.obs_bound_method, random_state=SEED)
+            
+            regret_results[key] = regrets
+            # error_results[arms] = errors
+
+    ## save the results
+    if len(num_actions) > 1:
+        assert len(cfg.num_visibles) == 1
+        label_name = r"$\vert \mathcal{A}_t\vert$"
+    elif len(cfg.num_visibles) > 1:
+        assert len(num_actions) == 1
+        label_name = r"$m$"
     fname = (f"{SEED}_noise_{cfg.context_std}_nvisibles_{cfg.num_visibles}_{METHOD_DICT[cfg.latent_bound_method]}_" 
              f"feat_{DIST_DICT[cfg.feat_dist]}_{DEP_DICT[cfg.feat_disjoint]}_map_{DIST_DICT[cfg.map_dist]}_"
              f"bias_{DIST_DICT[cfg.bias_dist]}_param_{DIST_DICT[cfg.param_dist]}_{DEP_DICT[cfg.param_disjoint]}")

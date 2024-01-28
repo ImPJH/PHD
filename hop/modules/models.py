@@ -66,7 +66,8 @@ class LinTS(ContextualBandit):
         
         ## parameter sampling
         # self.alpha_ = self.alpha * np.sqrt(np.log(self.t))
-        alpha = lints_alpha(d=self.d, horizon=self.horizon, reward_std=self.reward_std, delta=self.delta) * np.sqrt(np.log(self.t))
+        # alpha = lints_alpha(d=self.d, horizon=self.horizon, reward_std=self.reward_std, delta=self.delta) * np.sqrt(np.log(self.t))
+        alpha = lints_alpha(d=self.d, reward_std=self.reward_std, delta=self.delta)
         tilde_theta = np.random.multivariate_normal(mean=self.theta_hat, cov=(alpha**2) * self.Binv)  # (d, ) random matrix
         
         ## compute estimates and choose the argmax
@@ -97,12 +98,13 @@ class OFUL(ContextualBandit):
     def choose(self, x):
         # x: action set at each round (N, d)
         ## compute alpha
-        maxnorm = np.amax([l2norm(x[i]) for i in range(self.arms)])
+        arms = x.shape[0]
+        maxnorm = np.amax([l2norm(x[i]) for i in range(arms)])
         if isinstance(self.context_std, float):
-            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=self.arms, lbda=self.lbda, 
+            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=arms, lbda=self.lbda, 
                                reward_std=self.reward_std, context_std=self.context_std)
         else:
-            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=self.arms, lbda=self.lbda, 
+            alpha = oful_alpha(maxnorm=maxnorm, horizon=self.horizon, d=self.d, arms=arms, lbda=self.lbda, 
                                reward_std=self.reward_std, context_std=self.context_std[self.t-1])
 
         ## compute the ridge estimator
@@ -125,7 +127,7 @@ class OFUL(ContextualBandit):
 
 
 class HOPlinear(ContextualBandit):
-    def __init__(self, d:int, arms:int, lbda:float, reward_std:float, delta:float) -> None:
+    def __init__(self, d:int, arms:int, lbda:float, reward_std:float, delta:float, horizon:int) -> None:
         self.d = d
         self.arms = arms
         self.xty = np.zeros(d+arms)
@@ -134,13 +136,16 @@ class HOPlinear(ContextualBandit):
         self.theta_hat = np.zeros(d+arms)
         self.reward_std = reward_std
         self.delta = delta
+        self.horizon = horizon
+        # self.delta = 1
         self.t = 0
         
     def choose(self, x:np.ndarray) -> int:
         # x: action set at each round (N, d)
         self.t += 1
         ## compute alpha
-        alpha = hop_alpha(lbda=self.lbda, reward_std=self.reward_std, arms=self.arms, delta=self.delta) * np.sqrt(np.log(self.t))
+        # alpha = hop_alpha(lbda=self.lbda, reward_std=self.reward_std, arms=self.arms, delta=self.delta) * np.sqrt(np.log(self.t))
+        alpha = hop_alpha(lbda=self.lbda, horizon=self.horizon, reward_std=self.reward_std, arms=self.arms, delta=self.delta)
         ## compute the ridge estimator
         self.theta_hat = self.Vinv @ self.xty
         
@@ -162,23 +167,21 @@ class HOPlinear(ContextualBandit):
 
 class LineGreedy(ContextualBandit):
     ## epsilon greedy linear bandit
-    def __init__(self, d:int, alpha:float, lbda:float):
+    def __init__(self, d, alpha, lbda):
         self.d = d
         self.alpha = alpha
         self.xty = np.zeros(d)
         self.Vinv = (1 / lbda) * np.identity(d)
         self.theta_hat = np.zeros(d)
         self.t = 0
-        
-    def choose(self, x:np.ndarray) -> int:
+
+    def choose(self, x):
         self.t += 1
         epsilon = (1./self.t) * self.alpha
-        print(f"epsilon : {epsilon}")
-        
         arms, _ = x.shape
         theta_hat = self.Vinv @ self.xty
         expected = x @ theta_hat
-        
+
         ## epsilon greedy
         p = np.random.random()
         if epsilon < p:
@@ -188,10 +191,10 @@ class LineGreedy(ContextualBandit):
             best_arm = np.random.choice(argmax)
         else:
             ## with epsilon probability, choose a random action
-            best_arm = np.random.randint(arms)    
+            best_arm = np.random.randint(arms)
         return best_arm
 
-    def update(self, x:np.ndarray, r:float) -> None:
+    def update(self, x, r):
         # x: context of the chosen action (d, )
         self.Vinv = shermanMorrison(self.Vinv, x)
         self.xty += (r * x)
