@@ -286,9 +286,9 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
     return param
 
 
-def save_plot(fig:Figure, path:str, fname:str):
+def save_plot(fig:Figure, path:str, fname:str, extension:str="pdf"):
     os.makedirs(path, exist_ok=True)
-    fig.savefig(f"{path}/{fname}.png")
+    fig.savefig(f"{path}/{fname}.{extension}")
     print("Plot is Saved Completely!")
     
 
