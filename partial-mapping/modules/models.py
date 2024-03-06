@@ -2,7 +2,8 @@ import numpy as np
 from util import *
 from abc import ABC, abstractmethod
 from calculate_alpha import *
-import scipy.optimize
+import scipy
+from typing import Callable
 
 ## abstract class
 class ContextualBandit(ABC):
@@ -126,7 +127,7 @@ class OFUL(ContextualBandit):
         self.xty += (r * x)
 
 
-class HOPlinear(ContextualBandit):
+class LinUCBPO(ContextualBandit):
     def __init__(self, d:int, arms:int, lbda:float, reward_std:float, delta:float, horizon:int) -> None:
         self.d = d
         self.arms = arms
@@ -200,64 +201,50 @@ class LineGreedy(ContextualBandit):
         self.xty += (r * x)
 
 
-# class UCBGLM(ContextualBandit):
-#     def __init__(self, d, horizon, reward_std, lbda, link_func, delta):
-#         self.d = d
-#         self.link = link_func
-#         self.reward_std = reward_std
-#         self.t = 0
-#         self.horizon = horizon
-#         self.delta = delta
-#         self.prev_theta = np.zeros(d)
-#         self.Vinv = (1 / lbda) * np.identity(d)
-#         self.rewards = []  # contains the chosen reward
-#         self.contexts = [] # contains the chosen context
-    
-#     def _calc_mle(self, theta):
-#         to_sum = []
-#         for tau in range(self.t):
-#             diff = self.rewards[tau] - self.link(self.contexts[tau] @ theta)
-#             to_sum.append(diff * self.contexts[tau])
-#         return np.sum(to_sum, 0)
-    
-#     def _numerical_diff(self, f, x, theta):
-#         # f: function
-#         # x: K, d
-#         K, d = x.shape
-#         epsilon = 1e-4
-#         kappas = np.zeros(K)
-#         for k in range(K):
-#             arg = x[k, :] @ theta
-#             quotient = (f(arg+epsilon) - f(arg-epsilon)) / (2*epsilon)
-#             kappas[k] = quotient
-#         return np.amin(kappas)
-    
-#     def choose(self, x):
-#         K, d = x.shape  # K: number of arms, d: dimension
-#         self.t += 1
-#         if self.t <= K:
-#             return self.t-1
-        
-#         ## compute the estimator
-#         theta_hat = scipy.optimize.root(self._calc_mle, self.prev_theta)
-        
-#         ## compute alpha
-#         kappa = self._numerical_diff(self.link, x, theta_hat)
-#         alpha = (3*self.reward_std / kappa) * np.sqrt(2 * np.log(self.horizon*K / self.delta))
-#         expected = x @ theta_hat
-#         width = np.sqrt(np.einsum("Ni, ij, Nj -> N", x, self.Vinv, x))
-#         ucb_scores = expected + (alpha * width)
-        
-#         ## chose the argmax the ucb score
-#         maximum = np.max(ucb_scores)
-#         argmax, = np.where(ucb_scores == maximum)
-        
-#         ## update theta hat
-#         self.prev_theta = theta_hat
-#         return np.random.choice(argmax)
-    
-#     def update(self, x, r):
-#         # x: context of the chosen action (d, )
-#         self.Vinv = shermanMorrison(self.Vinv, x)
-#         self.rewards.append(r)
-#         self.contexts.append(x) 
+class GLMUCB(ContextualBandit):
+    def __init__(self, d:int, alpha:float, link_function:Callable):
+        self.alpha = alpha
+        self.t = 0
+        self.prev = np.zeros(d)
+        self.link = link_function
+        self.gram = np.zeros(shape=(d, d))
+        self.history = []
+        self.rewards = []
+
+    def choose(self, x:np.ndarray):
+        self.t += 1
+
+        ## x : (K, d)
+        K, d = x.shape
+        if scipy.linalg.det(self.gram) < 0.01:
+            idx = np.random.choice(np.arange(d))
+            return idx
+
+        ## estimate theta_hat according to MLE equation
+        theta_hat = scipy.optimize.root(self.__estimate, self.prev).x
+
+        ## calculate the reward
+        expected = self.link(x @ theta_hat)
+        tuning = self.alpha * np.sqrt(np.log(self.t))
+        width = np.sqrt(np.einsum("Ni, ij, Nj -> N", x, scipy.linalg.inv(self.gram), x)) # (N, ) widths
+        ucb_scores = expected + (tuning * width)
+
+        ## choose the argmax
+        maximum = np.max(ucb_scores)
+        argmax, = np.where(ucb_scores == maximum)
+        return np.random.choice(argmax)
+
+    def update(self, x:np.ndarray, r:float):
+        ## x: (d, ), r: scalar
+        self.rewards.append(r)
+        self.history.append(x)
+        self.gram += np.outer(x, x)
+
+    def __estimate(self, theta:np.ndarray):
+        mle_sum = []
+        for i in range(len(self.history)):
+            context = self.history[i]
+            reward = self.rewards[i]
+            estimate = self.link(context @ theta)
+            mle_sum.append((reward - estimate) * context)
+        return np.sum(mle_sum, axis=0)
