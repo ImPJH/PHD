@@ -36,7 +36,7 @@ def run_trials(trials:int, arms:int, lbda:float, horizon:int, latent:np.ndarray,
     # error_container = np.zeros(trials, dtype=object)
         
     for trial in range(trials):
-        agent = HOPlinear(d=obs_dim, arms=arms, lbda=lbda, reward_std=cfg.reward_std, delta=cfg.delta, horizon=horizon)
+        agent = LinUCBPO(d=obs_dim, arms=arms, lbda=lbda, reward_std=cfg.reward_std, delta=cfg.delta, horizon=horizon)
 
         random_state_ = random_state + (12221*(trial+1)) + (49997*arms)        
         inherent_rewards = param_generator(dimension=arms, distribution=cfg.bias_dist, disjoint=cfg.param_disjoint, 
@@ -58,7 +58,7 @@ def run_trials(trials:int, arms:int, lbda:float, horizon:int, latent:np.ndarray,
     # return regret_container, error_container
     return regret_container
 
-def run(agent:HOPlinear, horizon:int, latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, 
+def run(agent:LinUCBPO, horizon:int, latent:np.ndarray, decoder:np.ndarray, reward_params:np.ndarray, 
         inherent_rewards:np.ndarray, noise_dist:Tuple[str], noise_std:List[Union[float, List[float]]], 
         feat_bound:float, feat_bound_method:str, random_state:int, verbose:bool):
     obs_dim, _ = decoder.shape
