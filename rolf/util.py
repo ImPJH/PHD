@@ -41,12 +41,9 @@ def shermanMorrison(V:np.ndarray, x:np.ndarray):
 
 def vector_norm(v:np.ndarray, type:str):
     assert type in ["l1", "l2", "lsup"], "Type of the vector norm should be one of 'l1', 'l2', and 'lsup'."
+    type_dict = {"l1": 1, "l2": 2, "lsup": np.inf}
     v = v.flatten()
-    if type == "l1":
-        return np.sum(np.absolute(v))
-    if type == "l2":
-        return np.sqrt(np.sum(v ** 2))
-    return np.max(np.absolute(v))
+    return np.linalg.norm(v, ord=type_dict[type])
 
 
 def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None, 
@@ -182,6 +179,7 @@ def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:i
 
 
 def bounding(type:str, v:np.ndarray, bound:float, method:str=None, norm_type:str=None):
+    type_dict = {"l1": 1, "l2": 2, "lsup": np.inf}
     if type == "param":
         assert norm_type is not None, "For a vector, you should input which type of norm you are going to use."
         if vector_norm(v, type=norm_type) > bound:
@@ -192,9 +190,9 @@ def bounding(type:str, v:np.ndarray, bound:float, method:str=None, norm_type:str
             maxnorm = np.max([vector_norm(item, type=norm_type) for item in v])
             v *= (bound / maxnorm)
         else:
-            for i in range(v.shape[0]):
-                if vector_norm(v[i], type=norm_type) > bound:
-                    v[i] *= (bound / vector_norm(v[i], type=norm_type))
+            norms = np.linalg.norm(v, axis=1, ord=type_dict[norm_type])
+            scale_factors = np.where(norms > bound, bound / norms, 1)
+            v = v * scale_factors[:, np.newaxis]  # Scale each row without loop
     elif type == "mapping":
         assert method in ["lower", "upper"], f"If you're trying to bound {type}, you need to specify the lower or the upper bound."
         if method == "lower":
@@ -241,6 +239,10 @@ def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_d
             L = np.linalg.cholesky(pd)
             for i in range(size):
                 feat[i, :] = L @ feat[i, :]
+
+    # Ensure the matrix is full-rank by adding random noise if necessary
+    while np.linalg.matrix_rank(feat) < min(size, dimension):
+        feat += np.random.normal(0, 1e-4, size=feat.shape)
             
     if bound is not None:
         assert bound_method in ["scaling", "clipping"], "Bounding method should either be 'scaling' or 'clipping'."
@@ -321,3 +323,24 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
     print("Result is Saved Completely!")
 
 
+def orthogonal_complement_basis(X):
+    """
+    Compute an orthogonal basis for the orthogonal complement of the row space of X.
+    
+    Parameters:
+        X (numpy.ndarray): A matrix whose row space's orthogonal complement is to be found.
+        
+    Returns:
+        numpy.ndarray: A matrix whose columns form an orthogonal basis of R(X)^{\perp}.
+    """
+    # Perform Singular Value Decomposition
+    U, S, Vt = np.linalg.svd(X)
+    
+    # Find the rank of X to determine the number of non-zero singular values
+    rank = np.linalg.matrix_rank(X)
+    
+    # The basis for the null space (orthogonal complement of the row space)
+    # is given by the columns of V corresponding to zero singular values
+    null_space_basis = Vt[rank:].T
+    
+    return null_space_basis

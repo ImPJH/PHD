@@ -2,7 +2,8 @@ from cfg import get_cfg
 from models import *
 from util import *
 
-MOTHER_PATH = "/home/sungwoopark/bandit-research/rolf"
+# MOTHER_PATH = "/home/sungwoopark/bandit-research/rolf"
+MOTHER_PATH = "."
 
 DIST_DICT = {
     "gaussian": "g",
@@ -19,8 +20,8 @@ cfg = get_cfg()
 
 def run_trials(agent_type:str, trials:int, horizon:int, x:np.ndarray, noise_dist:str, noise_std:float, 
                feat_bound:float, feat_bound_method:str, feat_bound_type:str, random_state:int, verbose:bool):
-    # x: non-augmented feature (K, d)    
-    arms, d = x.shape
+    # x: non-augmented feature (d, K) - each column denotes the feature vector
+    d, arms = x.shape
     regret_container = np.zeros(trials, dtype=object)
 
     for trial in range(trials):
@@ -31,16 +32,19 @@ def run_trials(agent_type:str, trials:int, horizon:int, x:np.ndarray, noise_dist
         else:
             agent = RoLF(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std)
         
-        random_state_ = random_state + (7137 * (trial+1))
+        if random_state is not None:
+            random_state_ = random_state + (7137 * (trial+1))
+        else:
+            random_state_ = None
 
         ## sample the basis and augment the feature factor
-        basis = orthogonal_basis_generator(rows=arms, cols=arms-d)
-        x_aug = np.hstack((x, basis)) # augmented into (K, K) matrix
+        basis = orthogonal_complement_basis(x) # (K, K-d) matrix and each column vector denotes the orthogonal basis
+        x_aug = np.hstack((x.T, basis)) # augmented into (K, K) matrix and each row vector denotes the augmented feature
 
         ## sample reward parameter after augmentation and compute the expected rewards
-        reward_param = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=feat_bound, 
-                                       bound_type=cfg.param_bound_type, uniform_Rng=cfg.param_unifom_rng, random_state=random_state_)
-        exp_rewards = x_aug @ reward_param ## (K, ) vector
+        reward_param = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
+                                       bound_type=cfg.param_bound_type, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
+        exp_rewards = x_aug @ reward_param # (K, ) vector
 
         ## run and collect the regrets
         regrets = run(agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=x_aug, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
@@ -65,6 +69,8 @@ def run(agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:np.ndarray,
         if random_state is not None:
             random_state_ = random_state + int(3113 * t)
             np.random.seed(random_state_)
+        else:
+            random_state_ = None
 
         if t == 0:
             print(f"Number of actions : {x.shape[0]}\tReward range : [{np.amin(exp_rewards):.5f}, {np.amax(exp_rewards):.5f}]")
@@ -79,6 +85,7 @@ def run(agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:np.ndarray,
 
         ## compute the optimal action and the best action
         optimal_action = np.argmax(exp_rewards)
+        # print(f"optimal action : {optimal_action}")
         optimal_reward = exp_rewards[optimal_action]
         if isinstance(agent, ContextualBandit):
             chosen_action = agent.choose(x)
@@ -135,16 +142,18 @@ if __name__ == "__main__":
     d = cfg.obs_dim
     T = cfg.horizon
     SEED = cfg.seed
+    # AGENTS = ["rolf", "mab_ucb", "mab_egreedy"]
+    AGENTS = ["rolf"]
 
     RESULT_PATH = f"{MOTHER_PATH}/results"
     FIGURE_PATH = f"{MOTHER_PATH}/figures"
 
     ## generate the observable features
     X = feature_sampler(dimension=d, feat_dist=cfg.feat_dist, size=num_actions, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, bound=cfg.feat_feature_bound, 
-                        bound_method=cfg.feat_bound_method, bound_type=cfg.feat_bound_type, uniform_rng=cfg.feat_uniform_rng, random_state=SEED)
+                        bound_method=cfg.feat_bound_method, bound_type=cfg.feat_bound_type, uniform_rng=cfg.feat_uniform_rng, random_state=SEED).T
     
     regret_results = dict()
-    for agent_type in ["rolf", "mab_ucb", "mab_egreedy"]:
+    for agent_type in AGENTS:
         print(f"Agent Type : {agent_type}")
         regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, x=X, noise_dist="gaussian", 
                              noise_std=cfg.reward_std, feat_bound=cfg.feat_feature_bound, feat_bound_method=cfg.feat_bound_method, 
@@ -152,5 +161,6 @@ if __name__ == "__main__":
         key = AGENT_DICT[agent_type]
         regret_results[key] = regrets
     
-    fname = f"{SEED}_K_{num_actions}_d_{d}_feat_{DIST_DICT[cfg.feat_dist]}_param_{DIST_DICT[cfg.param_dist]}"
-    fig = show_result(regrets=regrets, horizon=T, label_name="Agent Type")
+    fname = f"{SEED}_K_{num_actions}_d_{d}_feat_{DIST_DICT[cfg.feat_dist]}_param_{DIST_DICT[cfg.param_dist]}_{datetime.now()}"
+    fig = show_result(regrets=regret_results, horizon=T, label_name="Agent Type")
+    save_plot(fig, path=FIGURE_PATH, fname=fname)
