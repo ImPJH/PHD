@@ -11,35 +11,38 @@ DIST_DICT = {
 }
 
 AGENT_DICT = {
-    "mab_egreedy": r"MAB-$\epsilon$-greedy",
     "mab_ucb": "MAB-UCB",
-    "rolf": "RoLF"
+    "linucb": "LinUCB",
+    "rolf_lasso": "RoLF-Lasso",
+    "rolf_ridge": "RoLF-Ridge"
 }
 
 cfg = get_cfg()
 
-def run_trials(agent_type:str, trials:int, horizon:int, x:np.ndarray, noise_dist:str, noise_std:float, 
-               feat_bound:float, feat_bound_method:str, feat_bound_type:str, random_state:int, verbose:bool):
-    # x: non-augmented feature (d, K) - each column denotes the feature vector
-    d, arms = x.shape
+def run_trials(agent_type:str, trials:int, horizon:int, d:int, arms:int, noise_std:float, random_state:int, verbose:bool):
     regret_container = np.zeros(trials, dtype=object)
-
     for trial in range(trials):
-        if agent_type == "mab_egreedy":
-            agent = eGreedyMAB(n_arms=arms, epsilon=cfg.epsilon)
+        if agent_type == "linucb":
+            agent = LinUCB(d=d, lbda=cfg.lbda, delta=cfg.delta)
         elif agent_type == "mab_ucb":
             agent = UCBDelta(n_arms=arms, delta=cfg.delta)
-        else:
-            agent = RoLF(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std)
+        elif agent_type == "rolf_lasso":
+            agent = RoLFLasso(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std)
+        elif agent_type == "rolf_ridge":
+            agent = RoLFRidge(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std)
         
         if random_state is not None:
-            random_state_ = random_state + (7137 * (trial+1))
+            random_state_ = random_state + (717 * trial)
         else:
             random_state_ = None
 
-        ## sample the basis and augment the feature factor
-        basis = orthogonal_complement_basis(x) # (K, K-d) matrix and each column vector denotes the orthogonal basis
-        x_aug = np.hstack((x.T, basis)) # augmented into (K, K) matrix and each row vector denotes the augmented feature
+        ## sample the observable features and orthogonal basis, then augment the feature factor
+        X = feature_sampler(dimension=d, feat_dist=cfg.feat_dist, size=arms, disjoint=cfg.feat_disjoint, 
+                            cov_dist=cfg.feat_cov_dist, bound=cfg.feat_feature_bound, bound_method=cfg.feat_bound_method, 
+                            bound_type=cfg.feat_bound_type, uniform_rng=cfg.feat_uniform_rng, random_state=random_state_).T
+        basis = orthogonal_complement_basis(X) # (K, K-d) matrix and each column vector denotes the orthogonal basis
+        x_aug = np.hstack((X.T, basis)) # augmented into (K, K) matrix and each row vector denotes the augmented feature
+        bounding(type="feature", v=x_aug, bound=cfg.feat_bound, method=cfg.feat_bound_method, norm_type="lsup")
 
         ## sample reward parameter after augmentation and compute the expected rewards
         reward_param = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
@@ -47,17 +50,15 @@ def run_trials(agent_type:str, trials:int, horizon:int, x:np.ndarray, noise_dist
         exp_rewards = x_aug @ reward_param # (K, ) vector
 
         ## run and collect the regrets
-        regrets = run(agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=x_aug, noise_dist=noise_dist, noise_std=noise_std, feat_bound=feat_bound, 
-                      feat_bound_method=feat_bound_method, feat_bound_type=feat_bound_type, random_state=random_state_, verbose=verbose)
+        regrets = run(agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=x_aug, 
+                      noise_dist="gaussian", noise_std=noise_std, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
     return regret_container
 
 
-def run(agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:np.ndarray, x:np.ndarray, noise_dist:str, noise_std:float, 
-        feat_bound:float, feat_bound_method:str, feat_bound_type:str, random_state:int, verbose:bool):
+def run(agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:np.ndarray, x:np.ndarray, 
+        noise_dist:str, noise_std:float, random_state:int, verbose:bool):
     # x: augmented feature if the agent is RoLF (K, K)
-    arms = x.shape[0]
-
     regrets = np.zeros(horizon, dtype=float)
 
     if not verbose:
@@ -68,30 +69,23 @@ def run(agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:np.ndarray,
     for t in bar:
         if random_state is not None:
             random_state_ = random_state + int(3113 * t)
-            np.random.seed(random_state_)
         else:
             random_state_ = None
 
         if t == 0:
             print(f"Number of actions : {x.shape[0]}\tReward range : [{np.amin(exp_rewards):.5f}, {np.amax(exp_rewards):.5f}]")
         
-        ## bound the action set
-        if feat_bound_method is not None:
-            bounding(type="feature", v=x, bound=feat_bound, method=feat_bound_method, norm_type=feat_bound_type)
-        
-        ## sample the reward noise and compute the reward
-        reward_noise = subgaussian_noise(distribution=noise_dist, size=arms, std=noise_std, random_state=random_state_)
-        rewards = exp_rewards + reward_noise
-
-        ## compute the optimal action and the best action
+        ## compute the optimal action
         optimal_action = np.argmax(exp_rewards)
-        # print(f"optimal action : {optimal_action}")
         optimal_reward = exp_rewards[optimal_action]
+
+        ## choose the best action
+        noise = subgaussian_noise(distribution=noise_dist, size=1, std=noise_std, random_state=random_state_)
         if isinstance(agent, ContextualBandit):
             chosen_action = agent.choose(x)
         else:
             chosen_action = agent.choose()
-        chosen_reward = rewards[chosen_action]
+        chosen_reward = exp_rewards[chosen_action] + noise
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]
@@ -142,22 +136,18 @@ if __name__ == "__main__":
     d = cfg.obs_dim
     T = cfg.horizon
     SEED = cfg.seed
-    # AGENTS = ["rolf", "mab_ucb", "mab_egreedy"]
-    AGENTS = ["rolf"]
+    if cfg.is_lasso:
+        AGENTS = ["rolf_lasso", "mab_ucb"]
+    elif cfg.is_ridge:
+        AGENTS = ["rolf_ridge", "linucb"]
 
     RESULT_PATH = f"{MOTHER_PATH}/results"
     FIGURE_PATH = f"{MOTHER_PATH}/figures"
-
-    ## generate the observable features
-    X = feature_sampler(dimension=d, feat_dist=cfg.feat_dist, size=num_actions, disjoint=cfg.feat_disjoint, cov_dist=cfg.feat_cov_dist, bound=cfg.feat_feature_bound, 
-                        bound_method=cfg.feat_bound_method, bound_type=cfg.feat_bound_type, uniform_rng=cfg.feat_uniform_rng, random_state=SEED).T
-    
+   
     regret_results = dict()
     for agent_type in AGENTS:
         print(f"Agent Type : {agent_type}")
-        regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, x=X, noise_dist="gaussian", 
-                             noise_std=cfg.reward_std, feat_bound=cfg.feat_feature_bound, feat_bound_method=cfg.feat_bound_method, 
-                             feat_bound_type=cfg.feat_bound_type, random_state=SEED, verbose=False)
+        regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, random_state=SEED, verbose=False)
         key = AGENT_DICT[agent_type]
         regret_results[key] = regrets
     

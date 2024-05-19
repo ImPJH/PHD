@@ -496,184 +496,113 @@ class GLMUCB(ContextualBandit):
         return np.sum(mle_sum, axis=0)
     
 
-# class RoLF(ContextualBandit):
-#     def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float):
-#         self.t = 0
-#         self.d = d
-#         self.K = arms
-#         self.mu_hat = np.zeros(self.K)
-#         self.sigma = sigma          # variance of noise
-#         self.p = p                  # hyperparameter for action sampling
-#         self.delta = delta          # confidence parameter
-#         self.pseudo_action = -1
-#         self.chosen_action = -2
-#         self.history = []           # history of chosen "augmented" actions upto the current round
-#         self.rewards = []           # history of observed rewards upto the current round
-#         self.pseudo_rewards = []    # history of pseudo rewards upto the current round
-
-#     def choose(self, x:np.ndarray):
-#         """
-#         x : (K, K) matrix with feature augmented
-#         """
-#         self.t += 1
-
-#         ## Compute the \hat{a}_t
-#         hat_action = np.argmax(x @ self.mu_hat)
-#         # print(f"Round : {self.t}, hat_action : {hat_action}")
-        
-#         ## Compute sampling distribution
-#         pseudo_dist = np.array([(1-self.p)/(self.K-1)] * self.K, dtype=float)
-#         pseudo_dist[hat_action] = self.p
-#         chosen_dist = np.array([(self.t ** (-0.5))/(self.K-1)] * self.K, dtype=float)
-#         chosen_dist[hat_action] = 1 - (self.t ** (-0.5))
-#         # print(f"Round: {self.t}, hat_action : {hat_action}")
-#         # print(f"mu hat : {self.mu_hat}")
-
-#         count = 0
-#         rho_t = np.log((self.t+1)**2  / self.delta) / np.log(1/self.p) # maximum resampling count
-
-#         ## re-initialize pseudo action and chosen action
-#         self.pseudo_action = -1
-#         self.chosen_action = -2
-#         while (self.pseudo_action != self.chosen_action) and (count <= rho_t):
-#             ## Sample the pseudo action
-#             self.pseudo_action = np.random.choice([i for i in range(self.K)], size=1, replace=True, p=pseudo_dist).item()
-#             ## Sample the chosen action
-#             self.chosen_action = np.random.choice([i for i in range(self.K)], size=1, replace=True, p=chosen_dist).item()
-#             count += 1
-#         # print(f"pseudo: {self.pseudo_action}, chosen: {self.chosen_action}, count < rho_t? : {count < rho_t}")
-#         return self.chosen_action
-
-#     def update(self, x:np.ndarray, r:float):
-#         """
-#         x : (K, K) matrix with feature augmented
-#         """
-
-#         ## data preparation
-#         self.history.append(x[self.chosen_action, :])
-#         self.rewards.append(r)
-
-#         if self.pseudo_action == self.chosen_action:
-#             # print("hello!")
-#             ## Lasso hyperparameter
-#             # log_inside = (2 * self.K * (self.t ** 2)) / self.delta
-#             # sqrt_inside = 2 * self.t * np.log(log_inside)
-#             log_inside = (2 * self.K) / self.delta
-#             sqrt_inside = 2 * np.log(log_inside)
-
-#             # lam_imputation = 2 * self.p * self.sigma * np.sqrt(sqrt_inside)
-#             # lam_main = (1 + (2/self.p)) * self.sigma * np.sqrt(sqrt_inside)
-#             lam_imputation = 0.001
-#             lam_main = 0.001
-
-#             ## Compute the pseudo-rewards
-#             # model_imputation = Lasso(alpha=lam_imputation, fit_intercept=False, max_iter=10000, tol=1e-6)
-#             # model_imputation.fit(np.array(self.history), np.array(self.rewards))
-#             # mu_imputation = model_imputation.coef_
-
-#             model_imputation = sm.OLS(np.array(self.rewards), np.array(self.history)).fit_regularized(method='elastic_net', L1_wt=1.0, alpha=lam_imputation)
-#             mu_imputation = model_imputation.params
-#             # print(mu_imputation)
-
-#             pseudo_rewards = x @ mu_imputation # inner product between tilde x and imputation mu, (K, ) vector
-#             pseudo_rewards[self.chosen_action] = pseudo_rewards[self.chosen_action] + (1/self.p) * (r - (x[self.chosen_action, :] @ mu_imputation))
-#             # print(f"Round : {self.t}, mu_imputation : {mu_imputation} pseudo rewards : {pseudo_rewards}")
-#             self.pseudo_rewards.append(pseudo_rewards)
-
-#             ## Compute the mu_hat
-#             # model_main = Lasso(alpha=lam_main, fit_intercept=False, max_iter=10000, tol=1e-6)
-#             data = np.concatenate([x] * len(self.pseudo_rewards), axis=0)
-#             target = np.concatenate(self.pseudo_rewards, axis=0)
-#             model_main = sm.OLS(target, data).fit_regularized(method='elastic_net', L1_wt=1.0, alpha=lam_main)
-#             mu_main = model_main.params
-#             # print(mu_main)
-
-#             ## update the mu_hat as the mu_main
-#             self.mu_hat = mu_main
-#             # print(f"mu_main : {mu_main}")
-
-class RoLF(ContextualBandit):
-    def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float):
+class RoLFLasso(ContextualBandit):
+    def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float, random_state:int):
         self.t = 0
         self.d = d
         self.K = arms
         self.mu_hat = np.zeros(self.K)
+        self.impute_prev = np.zeros(self.K)
+        self.main_prev = np.zeros(self.K)
         self.sigma = sigma          # variance of noise
         self.p = p                  # hyperparameter for action sampling
         self.delta = delta          # confidence parameter
-        self.action_history = []    # history of chosen actions upto the current round
-        self.reward_history = []    # history of observed rewards upto the current round
-        self.pseudo_rewards = []    # history of pseudo rewards upto the current round
-        self.matching = 0           # how many times that the pseudo action and the chosen action matched
+        self.action_history = []    # history of chosen actions up to the current round
+        self.reward_history = []    # history of observed rewards up to the current round
+        self.matching = dict()      # history of rounds that the pseudo action and the chosen action matched
+        self.random_state = random_state
 
-    def choose(self, x:np.ndarray):
-        # x : (K, K) augmented feature matrix where each row denotes the augmented features
+    def choose(self, x: np.ndarray):
+        # x : (K, d) augmented feature matrix where each row denotes the augmented features
         self.t += 1
 
         ## compute the \hat{a}_t
+        # if self.t > self.K:
+        #     decision_rule = x @ self.mu_hat
+        #     print(f"Decision rule : {decision_rule}")
+        #     a_hat = np.argmax(decision_rule)
+        # else:
+        #     a_hat = np.random.choice(np.arange(self.K))
+
         decision_rule = x @ self.mu_hat
-        max_reward = np.amax(decision_rule)
-        # print(f"max reward : {max_reward}")
-        argmaxes, = np.where(decision_rule == max_reward)
-        a_hat = np.random.choice(argmaxes)
-        # a_hat = np.argmax(decision_rule)
+        print(f"Decision rule : {decision_rule}")
+        a_hat = np.argmax(decision_rule)
 
         ## sampling actions
-        self.pseudo_action = -1
-        self.chosen_action = -2
+        pseudo_action = -1
+        chosen_action = -2
         count = 0
-        max_iter = np.log((self.t+1) ** 2 / self.delta) / np.log(1/self.p)
-        pseudo_dist = np.array([(1-self.p) / (self.K-1)] * self.K, dtype=float)
+        max_iter = int(np.log((self.t + 1) ** 2 / self.delta) / np.log(1 / self.p))
+        pseudo_dist = np.array([(1 - self.p) / (self.K - 1)] * self.K, dtype=float)
         pseudo_dist[a_hat] = self.p
-        chosen_dist = np.array([(1 / np.sqrt(self.t)) / (self.K-1)] * self.K, dtype=float)
+        chosen_dist = np.array([(1 / np.sqrt(self.t)) / (self.K - 1)] * self.K, dtype=float)
         chosen_dist[a_hat] = 1 - (1 / np.sqrt(self.t))
 
-        while (self.pseudo_action != self.chosen_action) and (count <= max_iter):
+        np.random.seed(self.random_state + self.t)
+        while (pseudo_action != chosen_action) and (count <= max_iter):
             ## Sample the pseudo action
-            self.pseudo_action = np.random.choice([i for i in range(self.K)], size=1, replace=True, p=pseudo_dist).item()
+            pseudo_action = np.random.choice([i for i in range(self.K)], size=1, replace=False, p=pseudo_dist).item()
             ## Sample the chosen action
-            self.chosen_action = np.random.choice([i for i in range(self.K)], size=1, replace=True, p=chosen_dist).item()
+            chosen_action = np.random.choice([i for i in range(self.K)], size=1, replace=False, p=chosen_dist).item()
             count += 1
 
-        self.action_history.append(self.chosen_action) # add to the history
-        return self.chosen_action
-    
-    def update(self, x:np.ndarray, r:float):
-        # x : (K, K) augmented feature matrix
+        self.action_history.append(chosen_action) # add to the history
+        self.pseudo_action = pseudo_action
+        self.chosen_action = chosen_action
+        print(f"Round: {self.t}, a_hat: {a_hat}, pseudo_action: {pseudo_action}, chosen_action: {chosen_action}, count: {count}")
+        return chosen_action
+
+    def update(self, x: np.ndarray, r: float):
+        # x : (K, d) augmented feature matrix
         # r : reward of the chosen_action
         self.reward_history.append(r)
 
-        # lam_imputation = 2 * self.p * self.sigma * np.sqrt(2 * self.t * np.log(2 * self.K * (self.t**2) / self.delta))
-        # lam_main = (1 + 2/self.p) * self.sigma * np.sqrt(2 * self.t * np.log(2 * self.K * (self.t ** 2) / self.delta))
-        lam_imputation = 0.0
-        lam_main = 0.0
+        # lam_impute = 2 * self.p * self.sigma * np.sqrt(2 * self.t * np.log(2 * self.K * (self.t ** 2) / self.delta))
+        # lam_main = (1 + 2 / self.p) * self.sigma * np.sqrt(2 * self.t * np.log(2 * self.K * (self.t ** 2) / self.delta))
+
+        # lam_impute = self.p * np.sqrt(np.log(self.t))
+        # lam_main = self.p * np.sqrt(np.log(self.t))
+
+        lam_impute = self.p
+        lam_main = self.p
 
         if self.pseudo_action == self.chosen_action:
-            self.matching += 1
-
             ## compute the imputation estimator
-            context_history = x[self.action_history, :] # (t, K) matrix
-            mu_imputation = self.__optimize(beta_init=np.zeros(self.K), data=context_history,
-                                            target=self.reward_history, lam=lam_imputation)
-            pseudo_rewards = x @ mu_imputation
-            pseudo_rewards[self.chosen_action] += (1 / self.p) * (r - (x[self.chosen_action, :] @ mu_imputation))
-            self.pseudo_rewards.append(pseudo_rewards)
-            
+            data_impute = x[self.action_history, :]  # (t, d) matrix
+            target_impute = np.array(self.reward_history)
+            mu_impute = scipy.optimize.minimize(self.__imputation_loss, self.impute_prev, args=(data_impute, target_impute, lam_impute),
+                                                method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
+            pseudo_rewards = x @ mu_impute
+            pseudo_rewards[self.chosen_action] += (1 / self.p) * (r - (x[self.chosen_action, :] @ mu_impute))
+
+            ## add the information
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards)
+
             ## compute the main estimator
-            data = np.concatenate([x] * self.matching, axis=0) # (N(M_tau) * K, K) matrix
-            target = np.concatenate(self.pseudo_rewards, axis=0)
-            mu_main = self.__optimize(beta_init=self.mu_hat, data=data, target=target, lam=lam_main)
-            
+            mu_main = scipy.optimize.minimize(self.__main_loss, self.main_prev, args=(lam_main, self.matching),
+                                              method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
+
             ## update the mu_hat
             self.mu_hat = mu_main
+        else:
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None)
 
-    def __optimize(self, beta_init:np.ndarray, data:np.ndarray, target:np.ndarray, lam:float):
-        def lasso_loss(beta, X, y, lam):
-            residuals = y - X @ beta
-            rss = np.sum(residuals**2) / (2 * len(y))
-            l1_norm = np.sum(np.abs(beta))
-            return rss + (lam * l1_norm)
-        
-        result = scipy.optimize.minimize(lasso_loss, beta_init, args=(data, target, lam), 
-                                         method='BFGS', options={'disp': False, "gtol":1e-6})
-        return result.x
+    def __imputation_loss(self, beta:np.ndarray, X:np.ndarray, y:np.ndarray, lam:float):
+        residuals = (y - (X @ beta)) ** 2
+        loss = np.sum(residuals, axis=0)
+        l1_norm = vector_norm(beta, type="l1")
+        return loss + (lam * l1_norm)
+
+    def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
+        ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
+        loss = 0
+        for key in matching_history:
+            matched, X, pseudo_rewards = matching_history[key]
+            if matched:
+                residuals = (pseudo_rewards - (X @ beta)) ** 2
+                interim_loss = np.sum(residuals, axis=0)
+            else:
+                interim_loss = 0
+            loss += interim_loss
+        l1_norm = vector_norm(beta, type="l1")
+        return loss + (lam * l1_norm)
