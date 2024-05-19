@@ -50,7 +50,11 @@ def run_trials(agent_type:str, trials:int, horizon:int, d:int, arms:int, noise_s
         exp_rewards = x_aug @ reward_param # (K, ) vector
 
         ## run and collect the regrets
-        regrets = run(agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=x_aug, 
+        if agent_type == "linucb":
+            data = X
+        else:
+            data = x_aug
+        regrets = run(agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=data, 
                       noise_dist="gaussian", noise_std=noise_std, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
     return regret_container
@@ -151,6 +155,6 @@ if __name__ == "__main__":
         key = AGENT_DICT[agent_type]
         regret_results[key] = regrets
     
-    fname = f"{SEED}_K_{num_actions}_d_{d}_feat_{DIST_DICT[cfg.feat_dist]}_param_{DIST_DICT[cfg.param_dist]}_{datetime.now()}"
+    fname = f"Seed_{SEED}_K_{num_actions}_d_{d}_feat_{DIST_DICT[cfg.feat_dist]}_param_{DIST_DICT[cfg.param_dist]}_{datetime.now()}"
     fig = show_result(regrets=regret_results, horizon=T, label_name="Agent Type")
     save_plot(fig, path=FIGURE_PATH, fname=fname)

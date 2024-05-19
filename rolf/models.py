@@ -606,3 +606,103 @@ class RoLFLasso(ContextualBandit):
             loss += interim_loss
         l1_norm = vector_norm(beta, type="l1")
         return loss + (lam * l1_norm)
+    
+
+class RoLFRidge(ContextualBandit):
+    def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float, random_state:int):
+        self.t = 0
+        self.d = d
+        self.K = arms
+        self.mu_hat = np.zeros(self.K)
+        self.sigma = sigma          # variance of noise
+        self.p = p                  # hyperparameter for action sampling
+        self.delta = delta          # confidence parameter
+        self.matching = dict()      # history of rounds that the pseudo action and the chosen action matched
+        self.Vinv_impute = self.p * np.identity(self.K)
+        self.xty_impute = np.zeros(self.K)
+        self.random_state = random_state
+
+    def choose(self, x: np.ndarray):
+        # x : (K, d) augmented feature matrix where each row denotes the augmented features
+        self.t += 1
+
+        ## compute the \hat{a}_t
+        # if self.t > self.K:
+        #     decision_rule = x @ self.mu_hat
+        #     print(f"Decision rule : {decision_rule}")
+        #     a_hat = np.argmax(decision_rule)
+        # else:
+        #     a_hat = np.random.choice(np.arange(self.K))
+
+        decision_rule = x @ self.mu_hat
+        print(f"Decision rule : {decision_rule}")
+        a_hat = np.argmax(decision_rule)
+
+        ## sampling actions
+        pseudo_action = -1
+        chosen_action = -2
+        count = 0
+        max_iter = int(np.log((self.t + 1) ** 2 / self.delta) / np.log(1 / self.p))
+        pseudo_dist = np.array([(1 - self.p) / (self.K - 1)] * self.K, dtype=float)
+        pseudo_dist[a_hat] = self.p
+        chosen_dist = np.array([(1 / np.sqrt(self.t)) / (self.K - 1)] * self.K, dtype=float)
+        chosen_dist[a_hat] = 1 - (1 / np.sqrt(self.t))
+
+        np.random.seed(self.random_state + self.t)
+        while (pseudo_action != chosen_action) and (count <= max_iter):
+            ## Sample the pseudo action
+            pseudo_action = np.random.choice([i for i in range(self.K)], size=1, replace=False, p=pseudo_dist).item()
+            ## Sample the chosen action
+            chosen_action = np.random.choice([i for i in range(self.K)], size=1, replace=False, p=chosen_dist).item()
+            count += 1
+
+        self.pseudo_action = pseudo_action
+        self.chosen_action = chosen_action
+        print(f"Round: {self.t}, a_hat: {a_hat}, pseudo_action: {pseudo_action}, chosen_action: {chosen_action}, count: {count}")
+        return chosen_action
+
+    def update(self, x: np.ndarray, r: float):
+        # x : (K, K) augmented feature matrix
+        # r : reward of the chosen_action
+        if self.pseudo_action == self.chosen_action:
+            ## compute the imputation estimator based on history
+            chosen_context = x[self.chosen_action, :]
+            self.Vinv_impute = shermanMorrison(self.Vinv_impute, chosen_context)
+            self.xty_impute += (r * chosen_context)
+            mu_impute = self.Vinv_impute @ self.xty_impute
+
+            ## compute the pseudo rewards
+            pseudo_rewards = x @ mu_impute
+            pseudo_rewards[self.chosen_action] += (1 / self.p) * (r - (x[self.chosen_action, :] @ mu_impute))
+
+            ## add the information
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards)
+
+            ## compute the main estimator
+            mu_main = self.__main_estimation(self.matching, dimension=self.K)
+
+            ## update the mu_hat
+            self.mu_hat = mu_main
+        else:
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None)
+
+    def __main_estimation(self, matching_history:dict, dimension:int):
+        ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
+        inv = np.identity(dimension)
+        score = np.zeros(dimension, dtype=float)
+        for key in matching_history:
+            matched, X, pseudo_rewards = matching_history[key]
+            if matched:
+                # inverse matrix
+                inv_init = np.zeros(shape=(dimension, dimension))
+                for a in range(X.shape[0]):
+                    inv_init += np.outer(X[a, :], X[a, :])
+                inv += inv_init
+
+                # score
+                score_init = np.zeros(shape=dimension, dtype=float)
+                for a in range(X.shape[0]):
+                    score_init += pseudo_rewards[a] * X[a, :]
+                score += score_init
+
+        return scipy.linalg.inv(inv) @ score
