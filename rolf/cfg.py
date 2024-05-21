@@ -1,18 +1,17 @@
 import argparse
-import multiprocessing
 
 def tuple_type(inputs):
     return tuple(map(float, inputs.split(',')))
 
-
 def get_cfg():
     parser = argparse.ArgumentParser()
-    
+    parser.add_argument("--explore", action="store_true")
+    parser.add_argument("--init_explore", type=str, choices=["sqr", "K"], default=None)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--trials", type=int, default=5)
 
-    parser.add_argument("--num_actions", "-N", type=int, default=20)
-    parser.add_argument("--obs_dim", "-d", type=int, default=10)
+    parser.add_argument("--arms", "-N", type=int, default=20)
+    parser.add_argument("--dim", "-d", type=int, default=10)
     parser.add_argument("--horizon", "-T", type=int, default=10000)
     parser.add_argument("--seed", "-S", type=int, default=None)
     
@@ -29,9 +28,8 @@ def get_cfg():
     parser.add_argument("--map_upper_bound", "-MUB", type=float, default=None)
     parser.add_argument("--map_uniform_rng", "-MUR", type=float, default=None, nargs=2)
     
-    parser.add_argument("--context_std", "-CS", type=str, default=None)
-    parser.add_argument("--context_std_variant", "-CSV", action="store_true")
-    parser.add_argument("--reward_std", "-RNS", type=float, default=0.1)
+    parser.add_argument("--reward_dist", "-RD", type=str, default="gaussian")
+    parser.add_argument("--reward_std", "-RS", type=float, default=0.1)
     
     parser.add_argument("--param_dist", "-PD", type=str, default="uniform")
     parser.add_argument("--param_bound", "-PB", type=float, default=1.)
@@ -42,6 +40,5 @@ def get_cfg():
     parser.add_argument("--filetype", type=str, choices=["pickle", "json"], default="pickle")
     parser.add_argument("--delta", type=float, default=0.1)
     parser.add_argument("--p", type=float, default=0.5)
-    parser.add_argument("--epsilon", type=float, default=0.01)
     
     return parser.parse_args()

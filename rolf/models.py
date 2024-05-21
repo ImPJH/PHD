@@ -284,13 +284,15 @@ class LinUCB(ContextualBandit):
         
         ## chose the argmax the ucb score
         maximum = np.max(ucb_scores)
-        argmax, = np.where(ucb_scores == maximum)        
-        return np.random.choice(argmax)
+        argmax, = np.where(ucb_scores == maximum)
+        self.chosen_action = np.random.choice(argmax)
+        return self.chosen_action
     
     def update(self, x:np.ndarray, r:float) -> None:
         # x: context of the chosen action (d, )
-        self.Vinv = shermanMorrison(self.Vinv, x)
-        self.xty += (r * x)
+        chosen_context = x[self.chosen_action, :]
+        self.Vinv = shermanMorrison(self.Vinv, chosen_context)
+        self.xty += (r * chosen_context)
 
 
 class LinTS(ContextualBandit):
@@ -321,14 +323,15 @@ class LinTS(ContextualBandit):
         expected = x @ tilde_theta  # (N, ) vector
         maximum = np.max(expected)
         argmax, = np.where(expected == maximum)
-        return np.random.choice(argmax)
-        # return np.argmax(expected)
+        self.chosen_action = np.random.choice(argmax)
+        return self.chosen_action
     
     def update(self, x:np.ndarray, r:float) -> None:
-        # x: context of the chosen action (d, )
+        # x: (K, d)
         # r: reward seen (scalar)
-        self.Binv = shermanMorrison(self.Binv, x)
-        self.xty += (r * x)    
+        chosen_context = x[self.chosen_action, :]
+        self.Binv = shermanMorrison(self.Binv, chosen_context)
+        self.xty += (r * chosen_context)    
 
 
 class OFUL(ContextualBandit):
@@ -497,7 +500,7 @@ class GLMUCB(ContextualBandit):
     
 
 class RoLFLasso(ContextualBandit):
-    def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float, random_state:int):
+    def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float, random_state:int, explore:bool=False, init_explore:int=0):
         self.t = 0
         self.d = d
         self.K = arms
@@ -511,22 +514,27 @@ class RoLFLasso(ContextualBandit):
         self.reward_history = []    # history of observed rewards up to the current round
         self.matching = dict()      # history of rounds that the pseudo action and the chosen action matched
         self.random_state = random_state
+        self.explore = explore
+        self.init_explore = init_explore
 
     def choose(self, x: np.ndarray):
         # x : (K, d) augmented feature matrix where each row denotes the augmented features
         self.t += 1
 
         ## compute the \hat{a}_t
-        # if self.t > self.K:
-        #     decision_rule = x @ self.mu_hat
-        #     print(f"Decision rule : {decision_rule}")
-        #     a_hat = np.argmax(decision_rule)
-        # else:
-        #     a_hat = np.random.choice(np.arange(self.K))
+        if self.explore:
+            if self.t > self.init_explore:
+                decision_rule = x @ self.mu_hat
+                print(f"Decision rule : {decision_rule}")
+                a_hat = np.argmax(decision_rule)
+            else:
+                a_hat = np.random.choice(np.arange(self.K))
+        else:
+            decision_rule = x @ self.mu_hat
+            print(f"Decision rule : {decision_rule}")
+            a_hat = np.argmax(decision_rule)
 
-        decision_rule = x @ self.mu_hat
-        print(f"Decision rule : {decision_rule}")
-        a_hat = np.argmax(decision_rule)
+        self.a_hat = a_hat
 
         ## sampling actions
         pseudo_action = -1
@@ -549,7 +557,6 @@ class RoLFLasso(ContextualBandit):
         self.action_history.append(chosen_action) # add to the history
         self.pseudo_action = pseudo_action
         self.chosen_action = chosen_action
-        print(f"Round: {self.t}, a_hat: {a_hat}, pseudo_action: {pseudo_action}, chosen_action: {chosen_action}, count: {count}")
         return chosen_action
 
     def update(self, x: np.ndarray, r: float):
@@ -563,8 +570,8 @@ class RoLFLasso(ContextualBandit):
         # lam_impute = self.p * np.sqrt(np.log(self.t))
         # lam_main = self.p * np.sqrt(np.log(self.t))
 
-        lam_impute = self.p
-        lam_main = self.p
+        lam_impute = self.p / 2
+        lam_main = self.p / 2
 
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator
@@ -572,11 +579,21 @@ class RoLFLasso(ContextualBandit):
             target_impute = np.array(self.reward_history)
             mu_impute = scipy.optimize.minimize(self.__imputation_loss, self.impute_prev, args=(data_impute, target_impute, lam_impute),
                                                 method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
+
+            ## compute and update the pseudo rewards
+            if self.matching:
+                for key in self.matching:
+                    matched, data, _, chosen, reward = self.matching[key]
+                    if matched:
+                        new_pseudo_rewards = data @ mu_impute
+                        new_pseudo_rewards[chosen] += (1 / self.p) * (reward - (data[chosen, :] @ mu_impute))
+                        # overwrite the value
+                        self.matching[key] = (matched, data, new_pseudo_rewards, chosen, reward)
+
+            ## compute the pseudo rewards for the current data
             pseudo_rewards = x @ mu_impute
             pseudo_rewards[self.chosen_action] += (1 / self.p) * (r - (x[self.chosen_action, :] @ mu_impute))
-
-            ## add the information
-            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards)
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards, self.chosen_action, r)
 
             ## compute the main estimator
             mu_main = scipy.optimize.minimize(self.__main_loss, self.main_prev, args=(lam_main, self.matching),
@@ -585,7 +602,7 @@ class RoLFLasso(ContextualBandit):
             ## update the mu_hat
             self.mu_hat = mu_main
         else:
-            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None)
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None, None, None)
 
     def __imputation_loss(self, beta:np.ndarray, X:np.ndarray, y:np.ndarray, lam:float):
         residuals = (y - (X @ beta)) ** 2
@@ -597,7 +614,7 @@ class RoLFLasso(ContextualBandit):
         ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
         loss = 0
         for key in matching_history:
-            matched, X, pseudo_rewards = matching_history[key]
+            matched, X, pseudo_rewards, _, _ = matching_history[key]
             if matched:
                 residuals = (pseudo_rewards - (X @ beta)) ** 2
                 interim_loss = np.sum(residuals, axis=0)
@@ -609,7 +626,7 @@ class RoLFLasso(ContextualBandit):
     
 
 class RoLFRidge(ContextualBandit):
-    def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float, random_state:int):
+    def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float, random_state:int, explore:bool=False, init_explore:int=0):
         self.t = 0
         self.d = d
         self.K = arms
@@ -621,22 +638,27 @@ class RoLFRidge(ContextualBandit):
         self.Vinv_impute = self.p * np.identity(self.K)
         self.xty_impute = np.zeros(self.K)
         self.random_state = random_state
+        self.explore = explore
+        self.init_explore = init_explore
 
     def choose(self, x: np.ndarray):
         # x : (K, d) augmented feature matrix where each row denotes the augmented features
         self.t += 1
 
         ## compute the \hat{a}_t
-        # if self.t > self.K:
-        #     decision_rule = x @ self.mu_hat
-        #     print(f"Decision rule : {decision_rule}")
-        #     a_hat = np.argmax(decision_rule)
-        # else:
-        #     a_hat = np.random.choice(np.arange(self.K))
+        if self.explore:
+            if self.t > self.init_explore:
+                decision_rule = x @ self.mu_hat
+                print(f"Decision rule : {decision_rule}")
+                a_hat = np.argmax(decision_rule)
+            else:
+                a_hat = np.random.choice(np.arange(self.K))
+        else:
+            decision_rule = x @ self.mu_hat
+            print(f"Decision rule : {decision_rule}")
+            a_hat = np.argmax(decision_rule)
 
-        decision_rule = x @ self.mu_hat
-        print(f"Decision rule : {decision_rule}")
-        a_hat = np.argmax(decision_rule)
+        self.a_hat = a_hat
 
         ## sampling actions
         pseudo_action = -1
@@ -671,12 +693,20 @@ class RoLFRidge(ContextualBandit):
             self.xty_impute += (r * chosen_context)
             mu_impute = self.Vinv_impute @ self.xty_impute
 
-            ## compute the pseudo rewards
+            ## compute and update the pseudo rewards
+            if self.matching:
+                for key in self.matching:
+                    matched, data, _, chosen, reward = self.matching[key]
+                    if matched:
+                        new_pseudo_rewards = data @ mu_impute
+                        new_pseudo_rewards[chosen] += (1 / self.p) * (reward - (data[chosen, :] @ mu_impute))
+                        # overwrite the value
+                        self.matching[key] = (matched, data, new_pseudo_rewards, chosen, reward)
+
+            ## compute the pseudo rewards for the current data
             pseudo_rewards = x @ mu_impute
             pseudo_rewards[self.chosen_action] += (1 / self.p) * (r - (x[self.chosen_action, :] @ mu_impute))
-
-            ## add the information
-            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards)
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards, self.chosen_action, r)
 
             ## compute the main estimator
             mu_main = self.__main_estimation(self.matching, dimension=self.K)
@@ -684,14 +714,14 @@ class RoLFRidge(ContextualBandit):
             ## update the mu_hat
             self.mu_hat = mu_main
         else:
-            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None)
+            self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None, None, None)
 
     def __main_estimation(self, matching_history:dict, dimension:int):
         ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
         inv = np.identity(dimension)
         score = np.zeros(dimension, dtype=float)
         for key in matching_history:
-            matched, X, pseudo_rewards = matching_history[key]
+            matched, X, pseudo_rewards, _, _ = matching_history[key]
             if matched:
                 # inverse matrix
                 inv_init = np.zeros(shape=(dimension, dimension))

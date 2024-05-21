@@ -9,21 +9,20 @@ import seaborn as sns
 from tqdm.auto import tqdm
 from datetime import datetime
 
-
 def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
     assert type(dim) == int or type(dim) == tuple, "The type of 'dim' must be either int or tuple."
-    
+
     if uniform_rng is None:
         low, high = -1., 1.
     else:
         assert len(uniform_rng) == 2, "The 'uniform_rng' must contain two elements: low and high."
         low, high = uniform_rng
-        
+
     if type(dim) == int:
         size = dim
     else:
         dim1, dim2 = dim
-        size = dim1 * dim2    
+        size = dim1 * dim2
     return np.random.uniform(low=low, high=high, size=size).reshape(dim)
 
 
@@ -46,7 +45,7 @@ def vector_norm(v:np.ndarray, type:str):
     return np.linalg.norm(v, ord=type_dict[type])
 
 
-def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None, 
+def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None,
                          variances:Union[list, np.ndarray]=None):
     if independent:
         if variances is None:
@@ -60,14 +59,14 @@ def covariance_generator(d:int, independent:bool, distribution:str=None, uniform
         mat = np.zeros(shape=(d, d))
         for i in range(d):
             mat[i, i] = variances[i]
-    
+
     else:
         assert distribution is not None and distribution.lower() in ["gaussian", "uniform"], f"If independent is {independent}, you need to pass the distribution to sample them."
         if distribution == "gaussian":
             rnd = np.random.randn(d, d)
         elif distribution == "uniform":
             rnd = generate_uniform(dim=(d, d), uniform_rng=uniform_rng)
-        
+
         ## make a symmetric matrix
         sym = (rnd + rnd.T) / 2
         ## make positive semi-definite and bound its maximum singular value
@@ -85,7 +84,7 @@ def gram_schmidt(A):
         Q[:,i] = A[:,i]
         for j in range(i):
             Q[:,i] -= np.dot(Q[:,j], A[:,i]) * Q[:,j]
-        
+
         # Normalize the vector
         Q[:,i] = Q[:,i] / np.linalg.norm(Q[:,i])
     return Q
@@ -98,7 +97,7 @@ def make_diagonal(v:np.ndarray, dim:Union[int, tuple]):
     else:
         diag = np.zeros(dim)
         rng = min(dim)
-        
+
     for i in range(rng):
         diag[i, i] = v[i]
     return diag
@@ -111,13 +110,13 @@ def positive_definite_generator(dimension:int, distribution:str="uniform", unifo
     if distribution == "uniform":
         source = generate_uniform(dim=(d, d), uniform_rng=uniform_rng)
     else:
-        source = np.random.randn(d, d)        
+        source = np.random.randn(d, d)
     eigvecs = gram_schmidt(source)
-    
+
     ## create a matrix of eigenvalues
     eigvals = generate_uniform(dim=d, uniform_rng=(0, 1))
     eigmat = make_diagonal(np.absolute(eigvals))
-    
+
     ## make the targeted positive definite matrix
     Z = eigvecs @ eigmat @ eigvecs.T
     return Z
@@ -130,7 +129,7 @@ def orthogonal_basis_generator(rows:int, cols:int, distribution:str="gaussian", 
         assert uniform_rng is not None
         source = generate_uniform(dim=(rows, cols), uniform_rng=uniform_rng)
     else:
-        source = np.random.randn(rows, cols)    
+        source = np.random.randn(rows, cols)
     Q, _ = np.linalg.qr(source)
     return Q
 
@@ -144,7 +143,7 @@ def minmax(v:np.ndarray, bound:float=1.):
 def left_pseudo_inverse(A:np.ndarray):
     d, k = A.shape
     u, A_sig, v_T = np.linalg.svd(A)
-    
+
     B_sig = np.zeros((k, d))
     for i in range(min(d, k)):
         B_sig[i, i] = 1 / A_sig[i]
@@ -159,11 +158,11 @@ def rademacher(size:int):
 def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:int=None):
     if random_state:
         np.random.seed(random_state)
-    
+
     if distribution == "gaussian":
         if std is None:
             std = 1.
-        noise = np.random.normal(loc=0, scale=std, size=size) 
+        noise = np.random.normal(loc=0, scale=std, size=size)
     elif distribution == "uniform":
         if std is None:
             uniform_rng = [-1., 1.]
@@ -175,6 +174,11 @@ def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:i
     else:
         std = 1.
         noise = rademacher(size=size)
+
+    if size == 1:
+        return noise[0]
+    elif size == 0:
+        return 0
     return noise
 
 
@@ -201,19 +205,19 @@ def bounding(type:str, v:np.ndarray, bound:float, method:str=None, norm_type:str
             sig = sig - np.min(sig) + bound
             sig_v = make_diagonal(sig, dim=v.shape)
             v = u @ sig_v @ v_T
-        
+
         if method == "upper":
             ## constrain the upper bound of the spectral norm
             v *= (bound / np.linalg.norm(v, 2))
     return v
 
 
-def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None, 
+def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None,
                     bound_method:str=None, bound_type:str=None, uniform_rng:list=None, random_state:int=None):
     assert feat_dist.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
-    
+
     if disjoint:
         if feat_dist.lower() == "gaussian":
             assert uniform_rng is None, f"If the distribution is {feat_dist}, variable range is not required."
@@ -233,7 +237,7 @@ def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_d
         else:
             ## uniform
             feat = generate_uniform(dim=(size, dimension), uniform_rng=uniform_rng)
-            
+
             # Cholesky decomposition
             pd = positive_definite_generator(dimension=dimension, distribution=cov_dist)
             L = np.linalg.cholesky(pd)
@@ -243,7 +247,7 @@ def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_d
     # Ensure the matrix is full-rank by adding random noise if necessary
     while np.linalg.matrix_rank(feat) < min(size, dimension):
         feat += np.random.normal(0, 1e-4, size=feat.shape)
-            
+
     if bound is not None:
         assert bound_method in ["scaling", "clipping"], "Bounding method should either be 'scaling' or 'clipping'."
         assert bound_type in ["l1", "l2", "lsup"], "Bounding type must be one of 'l1', 'l2', 'lsup'."
@@ -255,7 +259,7 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
     assert distribution.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
-    
+
     if distribution.lower() == "gaussian":
         assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
         mat = np.random.randn(obs_dim, latent_dim)
@@ -264,11 +268,11 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=[-np.sqrt(2/latent_dim), np.sqrt(2/latent_dim)])
         else:
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=uniform_rng)
-        
+
     if lower_bound is not None:
         ## constrain the lower bound of the spectral norm
         mat = bounding(type="mapping", v=mat, bound=lower_bound, method="lower")
-    
+
     if upper_bound is not None:
         ## constrain the upper bound of the spectral norm
         mat = bounding(type="mapping", v=mat, bound=upper_bound, method="upper")
@@ -279,7 +283,7 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
     assert distribution.lower() in ["gaussian", "uniform"], "Parameter distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
-    
+
     if disjoint:
         if distribution == "gaussian":
             assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
@@ -296,7 +300,7 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
             pd = positive_definite_generator(dimension, distribution=distribution)
             L = np.linalg.cholesky(pd)
             param = L @ param
-        
+
     if bound is not None:
         assert bound_type in ["l1", "l2", "lsup"], "Bounding type must be one of 'l1', 'l2', 'lsup'."
         param = bounding(type="param", v=param, bound=bound, norm_type=bound_type)
@@ -307,12 +311,12 @@ def save_plot(fig:Figure, path:str, fname:str, extension:str="pdf"):
     os.makedirs(path, exist_ok=True)
     fig.savefig(f"{path}/{fname}.{extension}")
     print("Plot is Saved Completely!")
-    
+
 
 def save_result(result:dict, path:str, fname:str, filetype:str):
     assert filetype in ["pickle", "json"]
     os.makedirs(path, exist_ok=True)
-    
+
     if filetype == "pickle":
         with open(f"{path}/{fname}.pkl", "wb") as f:
             pickle.dump(result, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -326,21 +330,21 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
 def orthogonal_complement_basis(X):
     """
     Compute an orthogonal basis for the orthogonal complement of the row space of X.
-    
+
     Parameters:
         X (numpy.ndarray): A matrix whose row space's orthogonal complement is to be found.
-        
+
     Returns:
         numpy.ndarray: A matrix whose columns form an orthogonal basis of R(X)^{\perp}.
     """
     # Perform Singular Value Decomposition
     U, S, Vt = np.linalg.svd(X)
-    
+
     # Find the rank of X to determine the number of non-zero singular values
     rank = np.linalg.matrix_rank(X)
-    
+
     # The basis for the null space (orthogonal complement of the row space)
     # is given by the columns of V corresponding to zero singular values
     null_space_basis = Vt[rank:].T
-    
+
     return null_space_basis

@@ -13,6 +13,7 @@ DIST_DICT = {
 AGENT_DICT = {
     "mab_ucb": "MAB-UCB",
     "linucb": "LinUCB",
+    "lints": "LinTS",
     "rolf_lasso": "RoLF-Lasso",
     "rolf_ridge": "RoLF-Ridge"
 }
@@ -20,21 +21,35 @@ AGENT_DICT = {
 cfg = get_cfg()
 
 def run_trials(agent_type:str, trials:int, horizon:int, d:int, arms:int, noise_std:float, random_state:int, verbose:bool):
+    exp_map = {
+        "sqr": (arms ** 2),
+        "K": arms
+    }
     regret_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
-        if agent_type == "linucb":
-            agent = LinUCB(d=d, lbda=cfg.lbda, delta=cfg.delta)
-        elif agent_type == "mab_ucb":
-            agent = UCBDelta(n_arms=arms, delta=cfg.delta)
-        elif agent_type == "rolf_lasso":
-            agent = RoLFLasso(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std)
-        elif agent_type == "rolf_ridge":
-            agent = RoLFRidge(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std)
-        
         if random_state is not None:
             random_state_ = random_state + (717 * trial)
         else:
             random_state_ = None
+
+        if agent_type == "linucb":
+            agent = LinUCB(d=d, lbda=1, delta=cfg.delta)
+        elif agent_type == "lints":
+            agent = LinTS(d=d, lbda=1, horizon=horizon, reward_std=noise_std, delta=cfg.delta)
+        elif agent_type == "mab_ucb":
+            agent = UCBDelta(n_arms=arms, delta=cfg.delta)
+        elif agent_type == "rolf_lasso":
+            if cfg.explore:
+                agent = RoLFLasso(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std, random_state=random_state_, 
+                                  explore=cfg.explore, init_explore=exp_map[cfg.init_explore])
+            else:
+                agent = RoLFLasso(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std, random_state=random_state_)                
+        elif agent_type == "rolf_ridge":
+            if cfg.explore:
+                agent = RoLFRidge(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std, random_state=random_state_,
+                                  explore=cfg.explore, init_explore=exp_map[cfg.init_explore])
+            else:
+                agent = RoLFRidge(d=d, arms=arms, p=cfg.p, delta=cfg.delta, sigma=noise_std, random_state=random_state_)
 
         ## sample the observable features and orthogonal basis, then augment the feature factor
         X = feature_sampler(dimension=d, feat_dist=cfg.feat_dist, size=arms, disjoint=cfg.feat_disjoint, 
@@ -42,7 +57,7 @@ def run_trials(agent_type:str, trials:int, horizon:int, d:int, arms:int, noise_s
                             bound_type=cfg.feat_bound_type, uniform_rng=cfg.feat_uniform_rng, random_state=random_state_).T
         basis = orthogonal_complement_basis(X) # (K, K-d) matrix and each column vector denotes the orthogonal basis
         x_aug = np.hstack((X.T, basis)) # augmented into (K, K) matrix and each row vector denotes the augmented feature
-        bounding(type="feature", v=x_aug, bound=cfg.feat_bound, method=cfg.feat_bound_method, norm_type="lsup")
+        bounding(type="feature", v=x_aug, bound=cfg.feat_feature_bound, method=cfg.feat_bound_method, norm_type="lsup")
 
         ## sample reward parameter after augmentation and compute the expected rewards
         reward_param = param_generator(dimension=arms, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
@@ -50,12 +65,13 @@ def run_trials(agent_type:str, trials:int, horizon:int, d:int, arms:int, noise_s
         exp_rewards = x_aug @ reward_param # (K, ) vector
 
         ## run and collect the regrets
-        if agent_type == "linucb":
-            data = X
+        if agent_type == "linucb" or agent_type == "lints":
+            data = X.T
         else:
             data = x_aug
-        regrets = run(agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=data, 
-                      noise_dist="gaussian", noise_std=noise_std, random_state=random_state_, verbose=verbose)
+        print(data.shape)
+        regrets = run(agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=data, noise_dist=cfg.reward_dist, 
+                      noise_std=noise_std, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
     return regret_container
 
@@ -90,6 +106,11 @@ def run(agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:np.ndarray,
         else:
             chosen_action = agent.choose()
         chosen_reward = exp_rewards[chosen_action] + noise
+        if verbose:
+            try:
+                print(f"Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}, a_hat: {agent.a_hat}\tpseudo : {agent.pseudo_action}\tchosen : {agent.chosen_action}\t")
+            except:
+                print(f"Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}\tchosen : {chosen_action}")
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]
@@ -103,7 +124,7 @@ def run(agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:np.ndarray,
     return np.cumsum(regrets)
 
 
-def show_result(regrets:dict, horizon:int, label_name:str, figsize:tuple=(6, 5)):
+def show_result(regrets:dict, horizon:int, arms:int, label_name:str, figsize:tuple=(6, 5)):
     fig, ax = plt.subplots(figsize=figsize)
     
     colors = ['blue', 'orange', 'green', 'red', 'purple']
@@ -116,7 +137,7 @@ def show_result(regrets:dict, horizon:int, label_name:str, figsize:tuple=(6, 5))
         std = np.std(item, axis=0, ddof=1)
         
         # 마커와 에러 바가 있는 라인을 주기적으로 표시
-        ax.errorbar(rounds[::period], mean[::period], yerr=std[::period], label=f"{label_name}={key}", 
+        ax.errorbar(rounds[::period], mean[::period], yerr=std[::period], label=f"{key}", 
                     fmt='s', color=color, capsize=3, elinewidth=1)
         
         # 주기적인 마커 없이 전체 라인을 표시
@@ -125,7 +146,7 @@ def show_result(regrets:dict, horizon:int, label_name:str, figsize:tuple=(6, 5))
     ax.grid(True)
     ax.set_xlabel(r"Round ($t$)")
     ax.set_ylabel("Cumulative Regret")
-    # ax.set_title(f"{bias_label}{label_dict[cfg.bias_dist]}, {param_label}{label_dict[cfg.param_dist]}, {title}")
+    ax.set_title(fr"$K$ = {arms}")
     ax.legend()
     
     fig.tight_layout()  
@@ -136,25 +157,23 @@ def show_result(regrets:dict, horizon:int, label_name:str, figsize:tuple=(6, 5))
 
 if __name__ == "__main__":
     ## hyper-parameters
-    num_actions = cfg.num_actions # List[int]
-    d = cfg.obs_dim
+    arms = cfg.arms # List[int]
+    d = cfg.dim
     T = cfg.horizon
     SEED = cfg.seed
-    if cfg.is_lasso:
-        AGENTS = ["rolf_lasso", "mab_ucb"]
-    elif cfg.is_ridge:
-        AGENTS = ["rolf_ridge", "linucb"]
+    AGENTS = ["rolf_lasso", "rolf_ridge", "mab_ucb", "linucb", "lints"]
+    # AGENTS = ["linucb", "lints"]
 
     RESULT_PATH = f"{MOTHER_PATH}/results"
     FIGURE_PATH = f"{MOTHER_PATH}/figures"
    
     regret_results = dict()
     for agent_type in AGENTS:
-        print(f"Agent Type : {agent_type}")
-        regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, random_state=SEED, verbose=False)
+        regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, d=d, arms=arms, 
+                             noise_std=cfg.reward_std, random_state=SEED, verbose=True)
         key = AGENT_DICT[agent_type]
         regret_results[key] = regrets
     
-    fname = f"Seed_{SEED}_K_{num_actions}_d_{d}_feat_{DIST_DICT[cfg.feat_dist]}_param_{DIST_DICT[cfg.param_dist]}_{datetime.now()}"
-    fig = show_result(regrets=regret_results, horizon=T, label_name="Agent Type")
+    fname = f"Seed_{SEED}_K_{arms}_d_{d}_T_{T}_feat_{DIST_DICT[cfg.feat_dist]}_param_{DIST_DICT[cfg.param_dist]}"
+    fig = show_result(regrets=regret_results, horizon=T, arms=arms, label_name="")
     save_plot(fig, path=FIGURE_PATH, fname=fname)
