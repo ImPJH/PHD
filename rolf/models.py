@@ -632,7 +632,7 @@ class RoLFRidge(ContextualBandit):
         self.K = arms
         self.mu_hat = np.zeros(self.K)
         self.sigma = sigma          # variance of noise
-        self.p = p                  # hyperparameter for action sampling
+        self.p = p / 2              # hyperparameter for action sampling
         self.delta = delta          # confidence parameter
         self.matching = dict()      # history of rounds that the pseudo action and the chosen action matched
         self.Vinv_impute = self.p * np.identity(self.K)
