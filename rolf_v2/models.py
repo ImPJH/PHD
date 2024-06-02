@@ -199,7 +199,7 @@ class RoLFLasso(ContextualBandit):
                 a_hat = np.random.choice(np.arange(self.K))
         else:
             decision_rule = x @ self.mu_hat
-            print(f"Decision rule : {decision_rule}")
+            # print(f"Decision rule : {decision_rule}")
             a_hat = np.argmax(decision_rule)
 
         self.a_hat = a_hat
@@ -323,7 +323,7 @@ class RoLFRidge(ContextualBandit):
                 a_hat = np.random.choice(np.arange(self.K))
         else:
             decision_rule = x @ self.mu_hat
-            print(f"Decision rule : {decision_rule}")
+            # print(f"Decision rule : {decision_rule}")
             a_hat = np.argmax(decision_rule)
 
         self.a_hat = a_hat
@@ -348,7 +348,7 @@ class RoLFRidge(ContextualBandit):
 
         self.pseudo_action = pseudo_action
         self.chosen_action = chosen_action
-        print(f"Round: {self.t}, a_hat: {a_hat}, pseudo_action: {pseudo_action}, chosen_action: {chosen_action}, count: {count}")
+        # print(f"Round: {self.t}, a_hat: {a_hat}, pseudo_action: {pseudo_action}, chosen_action: {chosen_action}, count: {count}")
         return chosen_action
 
     def update(self, x: np.ndarray, r: float):

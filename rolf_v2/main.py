@@ -24,7 +24,9 @@ def run_trials(agent_type:str, trials:int, horizon:int, k:int, d:int, arms:int, 
     exp_map = {
         "double": (2 * arms),
         "sqr": (arms ** 2),
-        "K": arms
+        "K": arms,
+        "triple": (3 * arms),
+        "quad": (4 * arms)
     }
     regret_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
@@ -109,9 +111,9 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
         chosen_reward = exp_rewards[chosen_action] + noise
         if verbose:
             try:
-                print(f"Trial : {trial}, Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}\ta_hat: {agent.a_hat}\tpseudo : {agent.pseudo_action}\tchosen : {agent.chosen_action}\t")
+                print(f"Trial : {trial}, p : {cfg.p}, Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}\ta_hat: {agent.a_hat}\tpseudo : {agent.pseudo_action}\tchosen : {agent.chosen_action}\t")
             except:
-                print(f"Trial : {trial}, Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}\tchosen : {chosen_action}")
+                print(f"Trial : {trial}, p : {cfg.p}, Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}\tchosen : {chosen_action}")
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]
@@ -172,6 +174,6 @@ if __name__ == "__main__":
         key = AGENT_DICT[agent_type]
         regret_results[key] = regrets
     
-    fname = f"Seed_{SEED}_K_{arms}_d_{d}_T_{T}_p_{cfg.p}_explored_{cfg.init_explore}_param_{DIST_DICT[cfg.param_dist]}"
+    fname = f"Seed_{SEED}_K_{arms}_d_{d}_T_{T}_p_{cfg.p}_delta_{cfg.delta}_explored_{cfg.init_explore}_param_{DIST_DICT[cfg.param_dist]}"
     fig = show_result(regrets=regret_results, horizon=T, arms=arms)
     save_plot(fig, path=FIGURE_PATH, fname=fname)
