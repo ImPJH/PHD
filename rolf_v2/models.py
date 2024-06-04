@@ -193,7 +193,7 @@ class RoLFLasso(ContextualBandit):
         if self.explore:
             if self.t > self.init_explore:
                 decision_rule = x @ self.mu_hat
-                print(f"Decision rule : {decision_rule}")
+                # print(f"Decision rule : {decision_rule}")
                 a_hat = np.argmax(decision_rule)
             else:
                 a_hat = np.random.choice(np.arange(self.K))
@@ -238,8 +238,8 @@ class RoLFLasso(ContextualBandit):
         # lam_impute = self.p * np.sqrt(np.log(self.t))
         # lam_main = self.p * np.sqrt(np.log(self.t))
 
-        lam_impute = self.p / 2
-        lam_main = self.p / 2
+        lam_impute = self.p
+        lam_main = self.p
 
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator
@@ -317,7 +317,7 @@ class RoLFRidge(ContextualBandit):
         if self.explore:
             if self.t > self.init_explore:
                 decision_rule = x @ self.mu_hat
-                print(f"Decision rule : {decision_rule}")
+                # print(f"Decision rule : {decision_rule}")
                 a_hat = np.argmax(decision_rule)
             else:
                 a_hat = np.random.choice(np.arange(self.K))

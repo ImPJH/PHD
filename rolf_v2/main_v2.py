@@ -167,8 +167,8 @@ if __name__ == "__main__":
     AGENTS = ["rolf_lasso", "rolf_ridge", "linucb", "lints", "mab_ucb"]
     # AGENTS = ["linucb", "lints"]
 
-    RESULT_PATH = f"{MOTHER_PATH}/results_v2"
-    FIGURE_PATH = f"{MOTHER_PATH}/figures_v2"
+    RESULT_PATH = f"{MOTHER_PATH}/results_v2/p_{cfg.p}"
+    FIGURE_PATH = f"{MOTHER_PATH}/figures_v2/p_{cfg.p}"
    
     regret_results = dict()
     for agent_type in AGENTS:

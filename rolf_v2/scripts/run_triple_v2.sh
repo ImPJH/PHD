@@ -1,8 +1,8 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 9500 12000)
+seeds=$(python3 get_primes.py --nums 99000 100000)
 K=15
-k=10
+k=12
 d_values=(1 $(($k/2)) $(($k-1)))  # Define the d_values array with 1, (k/2), and (k-1)
 feat_bound=1
 sigma=0.05
@@ -22,7 +22,7 @@ do
         do
             for delta in "${delta_values[@]}"
             do
-                python main_v2.py --trials $trials --horizon $T --arms $K --latent_dim $k --dim $d --seed "$seed" --feat_dist gaussian --feat_feature_bound 1 --feat_bound_method clipping --feat_bound_type lsup --feat_disjoint --reward_std $sigma --param_dist uniform --param_uniform_rng -0.5 0.5 --param_bound 1 --param_disjoint --param_bound_type l1 --p $p --delta $delta --explore --init_explore triple
+                python main.py --trials $trials --horizon $T --arms $K --latent_dim $k --dim $d --seed "$seed" --feat_dist gaussian --feat_feature_bound 1 --feat_bound_method clipping --feat_bound_type lsup --feat_disjoint --reward_std $sigma --param_dist uniform --param_uniform_rng -0.5 0.5 --param_bound 1 --param_disjoint --param_bound_type l1 --p $p --delta $delta --explore --init_explore triple
             done
         done
     done

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 9500 12000)
+seeds=$(python3 get_primes.py --nums 10000 13000)
 K=15
 k=10
 d_values=(1 $(($k/2)) $(($k-1)))  # Define the d_values array with 1, (k/2), and (k-1)

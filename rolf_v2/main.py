@@ -164,8 +164,8 @@ if __name__ == "__main__":
     SEED = cfg.seed
     AGENTS = ["rolf_lasso", "rolf_ridge", "linucb", "lints", "mab_ucb"]
 
-    RESULT_PATH = f"{MOTHER_PATH}/results"
-    FIGURE_PATH = f"{MOTHER_PATH}/figures"
+    RESULT_PATH = f"{MOTHER_PATH}/results/p_{cfg.p}"
+    FIGURE_PATH = f"{MOTHER_PATH}/figures/p_{cfg.p}"
    
     regret_results = dict()
     for agent_type in AGENTS:
