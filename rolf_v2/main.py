@@ -31,7 +31,7 @@ def run_trials(agent_type:str, trials:int, horizon:int, k:int, d:int, arms:int, 
     regret_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
         if random_state is not None:
-            random_state_ = random_state + (713317 * trial)
+            random_state_ = random_state + (137731 * trial)
         else:
             random_state_ = None
 
@@ -91,7 +91,7 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
 
     for t in bar:
         if random_state is not None:
-            random_state_ = random_state + int(313 * t)
+            random_state_ = random_state + int(1551 * t)
         else:
             random_state_ = None
 
@@ -111,9 +111,9 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
         chosen_reward = exp_rewards[chosen_action] + noise
         if verbose:
             try:
-                print(f"Trial : {trial}, p : {cfg.p}, Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}\ta_hat: {agent.a_hat}\tpseudo : {agent.pseudo_action}\tchosen : {agent.chosen_action}\t")
+                print(f"SEED : {cfg.seed}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}")
             except:
-                print(f"Trial : {trial}, p : {cfg.p}, Agent: {agent.__class__.__name__}, Round: {t+1}\toptimal : {optimal_action}\tchosen : {chosen_action}")
+                print(f"SEED : {cfg.seed}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}")
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]
@@ -130,7 +130,7 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
 def show_result(regrets:dict, horizon:int, arms:int, figsize:tuple=(6, 5)):
     fig, ax = plt.subplots(figsize=figsize)
     
-    colors = ['blue', 'orange', 'green', 'red', 'purple']
+    colors = ['orange', 'blue', 'green', 'red', 'purple']
     period = horizon // 10
     
     # Plot the graph for each algorithm with error bars
@@ -162,10 +162,10 @@ if __name__ == "__main__":
     d = cfg.dim
     T = cfg.horizon
     SEED = cfg.seed
-    AGENTS = ["rolf_lasso", "rolf_ridge", "linucb", "lints", "mab_ucb"]
+    AGENTS = ["rolf_ridge", "rolf_lasso", "linucb", "lints", "mab_ucb"]
 
-    RESULT_PATH = f"{MOTHER_PATH}/results/p_{cfg.p}"
-    FIGURE_PATH = f"{MOTHER_PATH}/figures/p_{cfg.p}"
+    RESULT_PATH = f"{MOTHER_PATH}/results/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+    FIGURE_PATH = f"{MOTHER_PATH}/figures/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
    
     regret_results = dict()
     for agent_type in AGENTS:
