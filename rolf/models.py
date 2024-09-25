@@ -404,3 +404,65 @@ class RoLFRidge(ContextualBandit):
                 score += score_init
 
         return scipy.linalg.inv(inv) @ score
+    
+class DRLassoBandit(ContextualBandit):
+    def __init__(self, d:int, arms:int, lam1:float, lam2:float, zT:float, tr:bool):
+        ## learning params
+        self.d = d
+        self.arms = arms
+        self.lam1 = lam1
+        self.lam2 = lam2
+        self.tr = tr
+        self.zT = zT
+
+        ## initialization
+        self.beta_prev = np.zeros(self.d)
+        self.beta_hat = np.zeros(self.d)
+        self.pi_t = 0
+        self.x = []     # containing context history
+        self.r = []     # containing reward history
+        self.t = 0      # learning round
+
+    def choose(self, x):
+        ## x : (K, d) array - all contexts observed at t
+        self.t += 1
+        if self.t <= self.zT:
+            # forced sampling
+            self.action = np.random.choice(self.arms, replace=False)
+            self.pi_t = 1 / self.arms
+        else:
+            # UCB
+            expected_reward = x @ self.beta_hat     # (K, ) array
+            lam1 = self.lam1 * np.sqrt((np.log(self.t) + np.log(self.d)) / self.t)
+            lam1 = np.minimum(1, np.maximum(0, lam1))
+            self.mt = np.random.choice([0, 1], p=[1-lam1, lam1])
+            if self.mt == 1:
+                self.action = np.random.choice(self.arms)
+            else:
+                self.action = np.argmax(expected_reward)
+
+            self.pi_t = (lam1 / self.arms) + ((1-lam1) * (self.action == np.argmax(expected_reward)))
+
+        bar_x = np.mean(x, axis=0)
+        self.x.append(bar_x)
+        self.rhat = x @ self.beta_hat
+
+        return self.action
+
+    def update(self, x, r):
+        ## x : (d, ) array - context of the chosen action
+        ## r : float - reward
+        r_hat = np.mean(self.rhat) + ((r - self.rhat[self.action]) / (self.arms * self.pi_t))
+        if self.tr:
+            r_hat = np.minimum(3., np.maximum(-3., r_hat))
+        self.r.append(r_hat)
+
+        lam2 = self.lam2 * np.sqrt((np.log(self.t) + np.log(self.d)) / self.t)
+        data, target = np.vstack(self.x), np.array(self.r)
+        self.beta_hat = scipy.optimize.minimize(self.__lasso_loss, self.beta_prev, args=(data, target, lam2),
+                                                method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":30000}).x
+
+    def __lasso_loss(self, beta:np.ndarray, X:np.ndarray, y:np.ndarray, lam:float):
+        loss = np.sum((y - X @ beta) ** 2, axis=0)
+        l1norm = np.sum(np.abs(beta))
+        return loss + (lam * l1norm)
