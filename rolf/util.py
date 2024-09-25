@@ -337,7 +337,7 @@ def orthogonal_complement_basis(X):
 
     # The basis for the null space (orthogonal complement of the row space)
     # is given by the columns of V corresponding to zero singular values
-    if rank < K:
+    if rank <= K:
         null_space_basis = Vt[rank:].T
     else:
         null_space_basis = Vt.T

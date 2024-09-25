@@ -228,7 +228,7 @@ class RoLFLasso(ContextualBandit):
         return chosen_action
 
     def update(self, x: np.ndarray, r: float):
-        # x : (K, d) augmented feature matrix
+        # x : (K, K) augmented feature matrix
         # r : reward of the chosen_action
         self.reward_history.append(r)
 
@@ -451,9 +451,9 @@ class DRLassoBandit(ContextualBandit):
         return self.action
 
     def update(self, x, r):
-        ## x : (d, ) array - context of the chosen action
+        ## x : (K, d) array - context of the all actions in round t
         ## r : float - reward
-        r_hat = np.mean(self.rhat) + ((r - self.rhat[self.action]) / (self.arms * self.pi_t))
+        r_hat = np.mean(self.rhat) + ((r - (x[self.action]@self.beta_hat)) / (self.arms * self.pi_t))
         if self.tr:
             r_hat = np.minimum(3., np.maximum(-3., r_hat))
         self.r.append(r_hat)
@@ -529,17 +529,17 @@ class LassoBandit(ContextualBandit):
             ## update beta_t using Lasso
             data_t, target_t = np.vstack(self.Tx[self.action]), np.array(self.Tr[self.action])
             # print(data_t.shape)
-            beta_t = scipy.optimize.minimize(self.__lasso_loss, np.zeros(d), args=(data_t, target_t, lam1),
+            beta_t = scipy.optimize.minimize(self.__lasso_loss, np.zeros(d), args=(data_t, target_t, self.lam1),
                                              method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
 
             self.beta_t[self.action] = beta_t
 
         self.Sr[self.action].append(r)
         ## update beta_s using Lasso
-        lam2_t = lam2 * np.sqrt(((np.log(self.t) + np.log(self.d)) / self.t))
+        lam2_t = self.lam2 * np.sqrt(((np.log(self.t) + np.log(self.d)) / self.t))
         data_s, target_s = np.vstack(self.Sx[self.action]), np.array(self.Sr[self.action])
         # print(f"action : {self.action}, data : {data_s.shape}")
-        beta_s = scipy.optimize.minimize(self.__lasso_loss, np.zeros(d), args=(data_s, target_s, lam2),
+        beta_s = scipy.optimize.minimize(self.__lasso_loss, np.zeros(d), args=(data_s, target_s, lam2_t),
                                          method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
 
         self.beta_s[self.action] = beta_s
