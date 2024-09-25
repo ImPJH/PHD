@@ -6,11 +6,12 @@ def tuple_type(inputs):
 def get_cfg():
     parser = argparse.ArgumentParser()
     parser.add_argument("--explore", action="store_true")
-    parser.add_argument("--init_explore", type=str, choices=["sqr", "K", "double"], default=None)
+    parser.add_argument("--init_explore", type=str, choices=["quad", "triple", "sqr", "K", "double"], default=None)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--trials", type=int, default=5)
 
     parser.add_argument("--arms", "-N", type=int, default=20)
+    parser.add_argument("--latent_dim", "-l", type=int, default=10)
     parser.add_argument("--dim", "-d", type=int, default=10)
     parser.add_argument("--horizon", "-T", type=int, default=10000)
     parser.add_argument("--seed", "-S", type=int, default=None)

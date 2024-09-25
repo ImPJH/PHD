@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 from datetime import datetime
 
 def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
+    ## Generates a given dimension of random vector that where each element follows the uniform distribution in a given range
     assert type(dim) == int or type(dim) == tuple, "The type of 'dim' must be either int or tuple."
 
     if uniform_rng is None:
@@ -28,7 +29,6 @@ def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
 
 def shermanMorrison(V:np.ndarray, x:np.ndarray):
     """
-    ${V_t}^{-1} = V_{t-1}^{-1} - \frac{V_{t-1}^{-1}xx^T V_{t-1}^{-1}}{1 + x^T V_{t-1}^{-1} x}$
     V: inverse of old gram matrix, corresponding to $V_{t-1}$.
     x: a new observed context
     return: inverse of new gram matrix
@@ -45,8 +45,8 @@ def vector_norm(v:np.ndarray, type:str):
     return np.linalg.norm(v, ord=type_dict[type])
 
 
-def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None,
-                         variances:Union[list, np.ndarray]=None):
+def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None, variances:Union[list, np.ndarray]=None):
+    ## Generates a random covariance matrix
     if independent:
         if variances is None:
             assert distribution is not None and distribution.lower() in ["gaussian", "uniform"], "If the variances are not given, you need to pass the distribution to sample them."
@@ -78,6 +78,7 @@ def covariance_generator(d:int, independent:bool, distribution:str=None, uniform
 
 
 def gram_schmidt(A):
+    ## Gram-Schmidt decomposition
     Q = np.zeros(A.shape)
     for i in range(A.shape[1]):
         # Orthogonalize the vector
@@ -91,6 +92,7 @@ def gram_schmidt(A):
 
 
 def make_diagonal(v:np.ndarray, dim:Union[int, tuple]):
+    ## Generate a diagonal matrix
     if type(dim) == int:
         diag = np.zeros((dim, dim))
         rng = dim
@@ -122,25 +124,15 @@ def positive_definite_generator(dimension:int, distribution:str="uniform", unifo
     return Z
 
 
-def orthogonal_basis_generator(rows:int, cols:int, distribution:str="gaussian", uniform_rng:list=None):
-    assert rows >= cols, "The number of columns cannot exceed the number of rows"
-
-    if distribution == "uniform":
-        assert uniform_rng is not None
-        source = generate_uniform(dim=(rows, cols), uniform_rng=uniform_rng)
-    else:
-        source = np.random.randn(rows, cols)
-    Q, _ = np.linalg.qr(source)
-    return Q
-
-
 def minmax(v:np.ndarray, bound:float=1.):
+    # minmax scaler
     min = np.min(v)
     max = np.max(v)
     return ((v - min) / (max - min)) * bound
 
 
 def left_pseudo_inverse(A:np.ndarray):
+    ## Perform SVD to obtain the left pseudo inverse
     d, k = A.shape
     u, A_sig, v_T = np.linalg.svd(A)
 
@@ -152,10 +144,12 @@ def left_pseudo_inverse(A:np.ndarray):
 
 
 def rademacher(size:int):
+    ## generate a Rademacher random variable
     return 2 * np.random.randint(0, 2, size) - 1
 
 
 def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:int=None):
+    ## SubGaussian noise generator
     if random_state:
         np.random.seed(random_state)
 
@@ -183,6 +177,7 @@ def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:i
 
 
 def bounding(type:str, v:np.ndarray, bound:float, method:str=None, norm_type:str=None):
+    ## Function to bound a vector or a matrix
     type_dict = {"l1": 1, "l2": 2, "lsup": np.inf}
     if type == "param":
         assert norm_type is not None, "For a vector, you should input which type of norm you are going to use."
@@ -214,6 +209,7 @@ def bounding(type:str, v:np.ndarray, bound:float, method:str=None, norm_type:str
 
 def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None,
                     bound_method:str=None, bound_type:str=None, uniform_rng:list=None, random_state:int=None):
+    ## Function to sample a feature matrix
     assert feat_dist.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
@@ -256,6 +252,7 @@ def feature_sampler(dimension:int, feat_dist:str, size:int, disjoint:bool, cov_d
 
 
 def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound:float=None, upper_bound:float=None, uniform_rng:list=None, random_state:int=None):
+    ## Function that generates a linear mapping
     assert distribution.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
@@ -280,6 +277,7 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
 
 
 def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=None, bound_type:str=None, uniform_rng:list=None, random_state:int=None):
+    ## Function that generates an unknown parameter
     assert distribution.lower() in ["gaussian", "uniform"], "Parameter distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
@@ -328,17 +326,8 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
 
 
 def orthogonal_complement_basis(X):
-    """
-    Compute an orthogonal basis for the orthogonal complement of the row space of X.
-
-    Parameters:
-        X (numpy.ndarray): A matrix whose row space's orthogonal complement is to be found.
-
-    Returns:
-        numpy.ndarray: A matrix whose columns form an orthogonal basis of R(X)^{\perp}.
-    """
     # Perform Singular Value Decomposition
-    U, S, Vt = np.linalg.svd(X)
+    _, _, Vt = np.linalg.svd(X)
 
     # Find the rank of X to determine the number of non-zero singular values
     rank = np.linalg.matrix_rank(X)
