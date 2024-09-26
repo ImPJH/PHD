@@ -5,10 +5,10 @@ K=20
 k=40
 d_values=(1 10 20 40)  # Define the d_values array with 1, (k/2), and (k-1)
 feat_bound=1
-sigma=0.05
+sigma=0.03
 param_bound=1
 T=1000
-delta_values=(0.001)
+delta_values=(0.0001)
 trials=5
 p_values=(0.5 0.7 0.9)
 
