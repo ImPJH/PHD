@@ -1,9 +1,9 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 500 530)
-K=25
-k=50
-d_values=(1 10 25 40)  # Define the d_values array with 1, (k/2), and (k-1)
+seeds=$(python3 get_primes.py --nums 500 550)
+K=20
+k=40
+d_values=(1 10 20 40)  # Define the d_values array with 1, (k/2), and (k-1)
 feat_bound=1
 sigma=0.05
 param_bound=1
@@ -13,7 +13,8 @@ trials=5
 p_values=(0.5 0.7 0.9)
 
 # Iterate over each value in seeds, p_values, d_values, and delta_values and run the command
-for SEED in $seeds
+IFS=','
+for seed in $seeds;
 do
     for p in "${p_values[@]}"
     do
@@ -21,7 +22,7 @@ do
         do
             for delta in "${delta_values[@]}"
             do
-                python main.py --trials $trials --horizon $T --arms $K --latent_dim $k --dim $d --seed $SEED --feat_dist gaussian --feat_feature_bound 1 --feat_bound_method clipping --feat_bound_type lsup --feat_disjoint --reward_std $sigma --param_dist uniform --param_uniform_rng -0.5 0.5 --param_bound 1 --param_disjoint --param_bound_type l1 --p $p --delta $delta --explore --init_explore double
+                python main.py --trials $trials --horizon $T --arms $K --latent_dim $k --dim $d --seed "$seed" --feat_dist gaussian --feat_feature_bound 1 --feat_bound_method clipping --feat_bound_type lsup --feat_disjoint --reward_std $sigma --param_dist uniform --param_uniform_rng -0.5 0.5 --param_bound 1 --param_disjoint --param_bound_type l1 --p $p --delta $delta --explore --init_explore double
             done
         done
     done

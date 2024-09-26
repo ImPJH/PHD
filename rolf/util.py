@@ -326,18 +326,17 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
 
 
 def orthogonal_complement_basis(X):
-    _, K = X.shape
+    d, K = X.shape
     
     # Perform Singular Value Decomposition
     _, _, Vt = np.linalg.svd(X)
 
     # Find the rank of X to determine the number of non-zero singular values
     rank = np.linalg.matrix_rank(X)
-    # print(f"rank : {rank}")
 
     # The basis for the null space (orthogonal complement of the row space)
     # is given by the columns of V corresponding to zero singular values
-    if rank <= K:
+    if d <= K:
         null_space_basis = Vt[rank:].T
     else:
         null_space_basis = Vt.T

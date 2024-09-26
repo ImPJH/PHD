@@ -179,7 +179,8 @@ if __name__ == "__main__":
     T = cfg.horizon
     SEED = cfg.seed
     # AGENTS = ["rolf_lasso", "rolf_ridge", "dr_lasso", "linucb", "lints", "mab_ucb"]
-    AGENTS = ["rolf_ridge", "rolf_lasso", "dr_lasso", "linucb", "lints", "mab_ucb"]
+    # AGENTS = ["rolf_ridge", "rolf_lasso", "dr_lasso", "linucb", "lints", "mab_ucb"]
+    AGENTS = ["linucb", "lints", "rolf_ridge", "rolf_lasso", "dr_lasso", "mab_ucb"]
 
     RESULT_PATH = f"{MOTHER_PATH}/results/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
     FIGURE_PATH = f"{MOTHER_PATH}/figures/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
