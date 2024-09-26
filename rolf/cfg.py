@@ -15,6 +15,7 @@ def get_cfg():
     parser.add_argument("--dim", "-d", type=int, default=10)
     parser.add_argument("--horizon", "-T", type=int, default=10000)
     parser.add_argument("--seed", "-S", type=int, default=None)
+    parser.add_argument("--rho_sq", type=float, default=0.5)
     
     parser.add_argument("--feat_dist", "-FD", type=str, default="gaussian")
     parser.add_argument("--feat_disjoint", action="store_true")
