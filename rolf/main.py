@@ -34,10 +34,11 @@ def run_trials(agent_type:str, trials:int, horizon:int, k:int, d:int, arms:int, 
     # Z = feature_sampler(dimension=k, feat_dist=cfg.feat_dist, size=arms, disjoint=cfg.feat_disjoint, 
     #                     cov_dist=cfg.feat_cov_dist, bound=cfg.feat_feature_bound, bound_method=cfg.feat_bound_method, 
     #                     bound_type=cfg.feat_bound_type, uniform_rng=cfg.feat_uniform_rng, random_state=random_state_) # (K, k)
+    np.random.seed(random_state)
     rho_sq = cfg.rho_sq
     V = (1 - rho_sq) * np.eye(arms) + rho_sq * np.ones((arms, arms))
-    Z = np.random.multivariate_normal(mean=np.zeros(arms), cov=V, size=k).T # (K, k)
-    X = Z[:, :d].T # (d, K)
+    Z = np.random.multivariate_normal(mean=np.zeros(arms), cov=V, size=k)   # (k, K)
+    X = Z[:d, :]    # (d, K)
 
     ## run and collect the regrets
     regret_container = np.zeros(trials, dtype=object)
@@ -71,23 +72,23 @@ def run_trials(agent_type:str, trials:int, horizon:int, k:int, d:int, arms:int, 
         ## sample reward parameter after augmentation and compute the expected rewards
         reward_param = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
                                     bound_type=cfg.param_bound_type, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
-        exp_rewards = Z @ reward_param # (K, ) vector
+        exp_rewards = Z.T @ reward_param # (K, ) vector
 
         if isinstance(agent, LinUCB) or isinstance(agent, LinTS) or isinstance(agent, DRLassoBandit):
-            data = X.T
+            data = X.T  # (K, d)
         else:
             # (K, K-d) matrix and each column vector denotes the orthogonal basis if K > d
             # (K, K) matrix from singular value decomposition if d > K
             basis = orthogonal_complement_basis(X) 
 
             d, K = X.shape
-            if K >= d:
+            if d <= K:
                 x_aug = np.hstack((X.T, basis)) # augmented into (K, K) matrix and each row vector denotes the augmented feature
-                bounding(type="feature", v=x_aug, bound=cfg.feat_feature_bound, method=cfg.feat_bound_method, norm_type="lsup")
                 data = x_aug
             else:
                 data = basis
-
+        
+        bounding(type="feature", v=data, bound=cfg.feat_feature_bound, method=cfg.feat_bound_method, norm_type="lsup")
         regrets = run(trial=trial, agent=agent, horizon=horizon, exp_rewards=exp_rewards, x=data, 
                       noise_dist=cfg.reward_dist, noise_std=noise_std, random_state=random_state_, verbose=verbose)
         regret_container[trial] = regrets
@@ -126,9 +127,9 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
         chosen_reward = exp_rewards[chosen_action] + noise
         if verbose:
             try:
-                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}")
+                print(f"SEED : {random_state}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}")
             except:
-                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}")
+                print(f"SEED : {random_state}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}")
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]

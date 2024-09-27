@@ -2,7 +2,7 @@
 
 seeds=$(python3 get_primes.py --nums 995 1030)
 K=30
-k=20
+k=30
 d_values=(1 $(($k/2)) $(($k)))  # Define the d_values array with 1, (k/2), and (k-1)
 feat_bound=1
 sigma=0.03

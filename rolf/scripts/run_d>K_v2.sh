@@ -1,6 +1,6 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 200 250)
+seeds=$(python3 get_primes.py --nums 995 1030)
 K=30
 k=60
 d_values=(30 40 60)  # Define the d_values array with 1, (k/2), and (k-1)
@@ -8,9 +8,9 @@ feat_bound=1
 sigma=0.03
 param_bound=1
 T=1000
-delta_values=(0.001)
+delta_values=(0.0001)
 trials=5
-p_values=(0.5 0.7 0.9)
+p_values=(0.6 0.8)
 
 # Iterate over each value in seeds, p_values, d_values, and delta_values and run the command
 IFS=','
