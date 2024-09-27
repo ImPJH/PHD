@@ -145,7 +145,7 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
 def show_result(regrets:dict, horizon:int, arms:int, figsize:tuple=(6, 5)):
     fig, ax = plt.subplots(figsize=figsize)
     
-    colors = ['orange', 'blue', 'green', 'red', 'purple', 'black']
+    colors = ['red', 'purple', 'orange', 'blue', 'green', 'black']
     period = horizon // 10
     
     # Plot the graph for each algorithm with error bars
