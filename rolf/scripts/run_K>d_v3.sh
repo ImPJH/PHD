@@ -1,14 +1,14 @@
 #!/bin/bash
 
 seeds=$(python3 get_primes.py --nums 2002 2040)
-K=50
-k=20
+K=30
+k=15
 d_values=(1 $(($k/2)) $(($k)))  # Define the d_values array with 1, (k/2), and (k-1)
 feat_bound=1
 sigma=0.03
 param_bound=1
 T=1000
-delta_values=(0.0001)
+delta_values=(0.001)
 trials=5
 p_values=(0.5 0.7 0.9)
 
