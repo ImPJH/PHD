@@ -35,8 +35,8 @@ def run_trials(agent_type:str, trials:int, horizon:int, k:int, d:int, arms:int, 
     #                     cov_dist=cfg.feat_cov_dist, bound=cfg.feat_feature_bound, bound_method=cfg.feat_bound_method, 
     #                     bound_type=cfg.feat_bound_type, uniform_rng=cfg.feat_uniform_rng, random_state=random_state_) # (K, k)
     np.random.seed(random_state)
-    rho_sq = cfg.rho_sq
-    V = (1 - rho_sq) * np.eye(arms) + rho_sq * np.ones((arms, arms))
+    # rho_sq = cfg.rho_sq
+    V = np.eye(arms)
     Z = np.random.multivariate_normal(mean=np.zeros(arms), cov=V, size=k)   # (k, K)
     X = Z[:d, :]    # (d, K)
 
@@ -127,9 +127,9 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
         chosen_reward = exp_rewards[chosen_action] + noise
         if verbose:
             try:
-                print(f"SEED : {random_state}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}")
+                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}")
             except:
-                print(f"SEED : {random_state}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}")
+                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}")
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]
