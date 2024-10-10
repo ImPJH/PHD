@@ -191,6 +191,8 @@ if __name__ == "__main__":
         key = AGENT_DICT[agent_type]
         regret_results[key] = regrets
     
-    fname = f"Seed_{SEED}_K_{arms}_d_{d}_T_{T}_p_{cfg.p}_delta_{cfg.delta}_explored_{cfg.init_explore}_param_{DIST_DICT[cfg.param_dist]}"
+    fname = f"K_{arms}_k_{k}_d_{d}_T_{T}_delta_{cfg.delta}_explored_{cfg.init_explore}_param_{DIST_DICT[cfg.param_dist]}"
     fig = show_result(regrets=regret_results, horizon=T, arms=arms)
+
     save_plot(fig, path=FIGURE_PATH, fname=fname)
+    save_result(result=vars(cfg), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
