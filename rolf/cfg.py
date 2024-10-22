@@ -42,5 +42,6 @@ def get_cfg():
     parser.add_argument("--filetype", type=str, choices=["pickle", "json"], default="pickle")
     parser.add_argument("--delta", type=float, default=0.1)
     parser.add_argument("--p", type=float, default=0.5)
+    parser.add_argument("--date", type=str, default=None)
     
     return parser.parse_args()

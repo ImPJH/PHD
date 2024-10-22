@@ -2,7 +2,6 @@ from cfg import get_cfg
 from models import *
 from util import *
 
-# MOTHER_PATH = "/home/sungwoopark/bandit-research/rolf"
 MOTHER_PATH = "."
 
 DIST_DICT = {
@@ -14,8 +13,8 @@ AGENT_DICT = {
     "mab_ucb": r"UCB($\delta$)",
     "linucb": "LinUCB",
     "lints": "LinTS",
-    "rolf_lasso": "RoLF-Lasso",
-    "rolf_ridge": "RoLF-Ridge",
+    "rolf_lasso": "RoLF-Lasso (Ours)",
+    "rolf_ridge": "RoLF-Ridge (Ours)",
     "dr_lasso": "DRLasso"
 }
 
@@ -127,9 +126,9 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
         chosen_reward = exp_rewards[chosen_action] + noise
         if verbose:
             try:
-                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}")
+                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}")
             except:
-                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}")
+                print(f"SEED : {cfg.seed}, K : {cfg.arms}, Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}")
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]
@@ -143,29 +142,30 @@ def run(trial:int, agent:Union[MAB, ContextualBandit], horizon:int, exp_rewards:
     return np.cumsum(regrets)
 
 
-def show_result(regrets:dict, horizon:int, arms:int, figsize:tuple=(6, 5)):
+def show_result(regrets:dict, horizon:int, figsize:tuple=(6, 5), fontsize=11):
     fig, ax = plt.subplots(figsize=figsize)
     
-    colors = ['orange', 'blue', 'green', 'red', 'purple', 'black']
+    colors = ['blue', 'orange', 'green', 'red', 'purple', 'black']
     period = horizon // 10
     
+    z_init = len(colors)
     # Plot the graph for each algorithm with error bars
-    for color, (key, item) in zip(colors, regrets.items()):
+    for i, (color, (key, item)) in enumerate(zip(colors, regrets.items())):
         rounds = np.arange(horizon)
         mean = np.mean(item, axis=0)
         std = np.std(item, axis=0, ddof=1)
         
         # Display the line with markers and error bars periodically
         ax.errorbar(rounds[::period], mean[::period], yerr=std[::period], label=f"{key}", 
-                    fmt='s', color=color, capsize=3, elinewidth=1)
+                    fmt='s', color=color, capsize=3, elinewidth=1, zorder=z_init-i)
         
         # Display the full line without periodic markers
-        ax.plot(rounds, mean, color=color, linewidth=2)
+        ax.plot(rounds, mean, color=color, linewidth=2, zorder=z_init-i)
     
     ax.grid(True)
     ax.set_xlabel(r"Round ($t$)")
     ax.set_ylabel("Cumulative Regret")
-    ax.legend(fontsize=11)
+    ax.legend(loc="upper left", fontsize=fontsize)
     
     fig.tight_layout()  
     return fig
@@ -178,11 +178,11 @@ if __name__ == "__main__":
     d = cfg.dim
     T = cfg.horizon
     SEED = cfg.seed
-    # AGENTS = ["rolf_lasso", "rolf_ridge", "dr_lasso", "linucb", "lints", "mab_ucb"]
-    AGENTS = ["rolf_ridge", "rolf_lasso", "dr_lasso", "linucb", "lints", "mab_ucb"]
+    AGENTS = ["rolf_lasso", "rolf_ridge", "dr_lasso", "linucb", "lints", "mab_ucb"]
+    today = str(cfg.date)
 
-    RESULT_PATH = f"{MOTHER_PATH}/results/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
-    FIGURE_PATH = f"{MOTHER_PATH}/figures/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+    RESULT_PATH = f"{MOTHER_PATH}/results/{today}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+    FIGURE_PATH = f"{MOTHER_PATH}/figures/{today}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
    
     regret_results = dict()
     for agent_type in AGENTS:
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         regret_results[key] = regrets
     
     fname = f"K_{arms}_k_{k}_d_{d}_T_{T}_delta_{cfg.delta}_explored_{cfg.init_explore}_param_{DIST_DICT[cfg.param_dist]}"
-    fig = show_result(regrets=regret_results, horizon=T, arms=arms)
+    fig = show_result(regrets=regret_results, horizon=T, fontsize=15)
 
     save_plot(fig, path=FIGURE_PATH, fname=fname)
-    save_result(result=vars(cfg), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
+    save_result(result=(vars(cfg), regret_results), path=RESULT_PATH, fname=fname, filetype=cfg.filetype)
