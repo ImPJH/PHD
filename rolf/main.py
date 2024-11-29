@@ -184,11 +184,36 @@ if __name__ == "__main__":
     RESULT_PATH = f"{MOTHER_PATH}/results/{today}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
     FIGURE_PATH = f"{MOTHER_PATH}/figures/{today}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
    
-    regret_results = dict()
-    for agent_type in AGENTS:
-        regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, k=k, d=d, 
-                             arms=arms, noise_std=cfg.reward_std, random_state=SEED, verbose=True)
+    # regret_results = dict()
+    # for agent_type in AGENTS:
+    #     regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, k=k, d=d, 
+    #                          arms=arms, noise_std=cfg.reward_std, random_state=SEED, verbose=True)
+    #     key = AGENT_DICT[agent_type]
+    #     regret_results[key] = regrets
+
+    # Function to run trials for a single agent
+    def run_agent(agent_type):
+        regrets = run_trials(
+            agent_type=agent_type, 
+            trials=cfg.trials, 
+            horizon=T, 
+            k=k, 
+            d=d, 
+            arms=arms, 
+            noise_std=cfg.reward_std, 
+            random_state=SEED, 
+            verbose=True
+        )
         key = AGENT_DICT[agent_type]
+        return key, regrets
+
+    # Parallel execution using ProcessPoolExecutor
+    regret_results = dict()
+    with ProcessPoolExecutor(max_workers=4) as executor:
+        results = executor.map(run_agent, AGENTS)
+
+    # Collect results
+    for key, regrets in results:
         regret_results[key] = regrets
     
     fname = f"K_{arms}_k_{k}_d_{d}_T_{T}_delta_{cfg.delta}_explored_{cfg.init_explore}_param_{DIST_DICT[cfg.param_dist]}"

@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm.auto import tqdm
 from datetime import datetime
+from concurrent.futures import ProcessPoolExecutor
 
 def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
     ## Generates a given dimension of random vector that where each element follows the uniform distribution in a given range
@@ -342,3 +343,9 @@ def orthogonal_complement_basis(X):
         null_space_basis = Vt.T
 
     return null_space_basis
+
+
+def matrix_sqrt(A:np.ndarray):
+    U, S, _ = np.linalg.svd(A)
+    sqrt_S = np.diag(np.sqrt(S))
+    return U @ sqrt_S @ U.T

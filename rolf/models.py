@@ -388,11 +388,14 @@ class RoLFLasso(ContextualBandit):
         lam_impute = self.p
         lam_main = self.p
 
+        gram = x.T @ x
+        gram_sqrt = matrix_sqrt(gram) 
+
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator
             data_impute = x[self.action_history, :]  # (t, d) matrix
             target_impute = np.array(self.reward_history)
-            mu_impute = scipy.optimize.minimize(self.__imputation_loss, self.impute_prev, args=(data_impute, target_impute, lam_impute),
+            mu_impute = scipy.optimize.minimize(self.__imputation_loss, (gram_sqrt @ self.impute_prev), args=(data_impute, target_impute, lam_impute),
                                                 method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
 
             ## compute and update the pseudo rewards
@@ -411,7 +414,7 @@ class RoLFLasso(ContextualBandit):
             self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards, self.chosen_action, r)
 
             ## compute the main estimator
-            mu_main = scipy.optimize.minimize(self.__main_loss, self.main_prev, args=(lam_main, self.matching),
+            mu_main = scipy.optimize.minimize(self.__main_loss, (gram_sqrt @ self.main_prev), args=(lam_main, self.matching),
                                               method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
 
             ## update the mu_hat
@@ -425,19 +428,39 @@ class RoLFLasso(ContextualBandit):
         l1_norm = vector_norm(beta, type="l1")
         return loss + (lam * l1_norm)
 
-    def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
-        ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
-        loss = 0
-        for key in matching_history:
-            matched, X, pseudo_rewards, _, _ = matching_history[key]
-            if matched:
-                residuals = (pseudo_rewards - (X @ beta)) ** 2
-                interim_loss = np.sum(residuals, axis=0)
-            else:
-                interim_loss = 0
-            loss += interim_loss
-        l1_norm = vector_norm(beta, type="l1")
-        return loss + (lam * l1_norm)
+    # def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
+    #     ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
+    #     loss = 0
+    #     for key in matching_history:
+    #         matched, X, pseudo_rewards, _, _ = matching_history[key]
+    #         if matched:
+    #             residuals = (pseudo_rewards - (X @ beta)) ** 2
+    #             interim_loss = np.sum(residuals, axis=0)
+    #         else:
+    #             interim_loss = 0
+    #         loss += interim_loss
+    #     l1_norm = vector_norm(beta, type="l1")
+    #     return loss + (lam * l1_norm)
+
+    def __main_loss(self, beta: np.ndarray, lam: float, matching_history: dict):
+        # Extract matched keys and data
+        matched_keys = [key for key, value in matching_history.items() if value[0]]  # Filter matched entries
+        X_list = [matching_history[key][1] for key in matched_keys]  # List of X matrices
+        pseudo_rewards_list = [matching_history[key][2] for key in matched_keys]  # List of pseudo_rewards
+
+        # Compute residuals for matched keys
+        residuals_list = [
+            (pseudo_rewards - X @ beta) ** 2 for X, pseudo_rewards in zip(X_list, pseudo_rewards_list)
+        ]
+
+        # Sum all residuals efficiently
+        residuals_sum = sum(np.sum(residuals, axis=0) for residuals in residuals_list)
+
+        # L1 regularization
+        l1_norm = np.sum(np.abs(beta))
+
+        # Total loss
+        return residuals_sum + lam * l1_norm
     
 
 class RoLFRidge(ContextualBandit):
@@ -531,25 +554,44 @@ class RoLFRidge(ContextualBandit):
         else:
             self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None, None, None)
 
-    def __main_estimation(self, matching_history:dict, dimension:int):
-        ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
+    # def __main_estimation(self, matching_history:dict, dimension:int):
+    #     ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
+    #     inv = np.identity(dimension)
+    #     score = np.zeros(dimension, dtype=float)
+    #     for key in matching_history:
+    #         matched, X, pseudo_rewards, _, _ = matching_history[key]
+    #         if matched:
+    #             # inverse matrix
+    #             inv_init = np.zeros(shape=(dimension, dimension))
+    #             for a in range(X.shape[0]):
+    #                 inv_init += np.outer(X[a, :], X[a, :])
+    #             inv += inv_init
+
+    #             # score
+    #             score_init = np.zeros(shape=dimension, dtype=float)
+    #             for a in range(X.shape[0]):
+    #                 score_init += pseudo_rewards[a] * X[a, :]
+    #             score += score_init
+
+    #     return scipy.linalg.inv(inv) @ score
+
+    def __main_estimation(self, matching_history: dict, dimension: int):
+        # Initialize inv and score
         inv = np.identity(dimension)
         score = np.zeros(dimension, dtype=float)
-        for key in matching_history:
-            matched, X, pseudo_rewards, _, _ = matching_history[key]
-            if matched:
-                # inverse matrix
-                inv_init = np.zeros(shape=(dimension, dimension))
-                for a in range(X.shape[0]):
-                    inv_init += np.outer(X[a, :], X[a, :])
-                inv += inv_init
 
-                # score
-                score_init = np.zeros(shape=dimension, dtype=float)
-                for a in range(X.shape[0]):
-                    score_init += pseudo_rewards[a] * X[a, :]
-                score += score_init
+        # Filter matched entries
+        matched_entries = [value for key, value in matching_history.items() if value[0]]
 
+        # Process matched entries
+        for _, X, pseudo_rewards, _, _ in matched_entries:
+            # Update inv (outer products of rows in X)
+            inv += X.T @ X
+
+            # Update score (weighted sum of rows in X)
+            score += X.T @ pseudo_rewards
+
+        # Compute final estimation
         return scipy.linalg.inv(inv) @ score
 
 
