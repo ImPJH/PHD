@@ -70,7 +70,7 @@ def run_trials(agent_type:str, trials:int, horizon:int, k:int, d:int, arms:int, 
 
         ## sample reward parameter after augmentation and compute the expected rewards
         reward_param = param_generator(dimension=k, distribution=cfg.param_dist, disjoint=cfg.param_disjoint, bound=cfg.param_bound, 
-                                    bound_type=cfg.param_bound_type, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
+                                       bound_type=cfg.param_bound_type, uniform_rng=cfg.param_uniform_rng, random_state=random_state_)
         exp_rewards = Z.T @ reward_param # (K, ) vector
 
         if isinstance(agent, LinUCB) or isinstance(agent, LinTS) or isinstance(agent, DRLassoBandit):

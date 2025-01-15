@@ -1,16 +1,16 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 47 100)
+seeds=$(python3 get_primes.py --nums 107 154)
 K=50
 k=31
 d_values=(1 $(($k/2)) $(($k-1)))  # Define the d_values array with 1, (k/2), and (k-1)
 feat_bound=1
 sigma=0.03
 param_bound=1
-T=1000
+T=1200
 delta_values=(0.0001)
 trials=5
-p_values=(0.6)
+p_values=(0.5 0.6)
 today=$(date +"%Y-%m-%d")
 
 # Iterate over each value in seeds, p_values, d_values, and delta_values and run the command
