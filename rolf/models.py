@@ -395,8 +395,11 @@ class RoLFLasso(ContextualBandit):
             ## compute the imputation estimator
             data_impute = x[self.action_history, :]  # (t, d) matrix
             target_impute = np.array(self.reward_history)
-            mu_impute = scipy.optimize.minimize(self.__imputation_loss, (gram_sqrt @ self.impute_prev), args=(data_impute, target_impute, lam_impute),
-                                                method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
+            mu_impute = scipy.optimize.minimize(self.__imputation_loss, 
+                                                (gram_sqrt @ self.impute_prev), 
+                                                args=(data_impute, target_impute, lam_impute),
+                                                method="SLSQP", 
+                                                options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
 
             ## compute and update the pseudo rewards
             if self.matching:
@@ -414,8 +417,11 @@ class RoLFLasso(ContextualBandit):
             self.matching[self.t] = ((self.pseudo_action == self.chosen_action), x, pseudo_rewards, self.chosen_action, r)
 
             ## compute the main estimator
-            mu_main = scipy.optimize.minimize(self.__main_loss, (gram_sqrt @ self.main_prev), args=(lam_main, self.matching),
-                                              method="SLSQP", options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
+            mu_main = scipy.optimize.minimize(self.__main_loss, 
+                                              (gram_sqrt @ self.main_prev), 
+                                              args=(lam_main, self.matching),
+                                              method="SLSQP", 
+                                              options={'disp': False, "ftol":1e-6, "maxiter":10000}).x
 
             ## update the mu_hat
             self.mu_hat = mu_main
