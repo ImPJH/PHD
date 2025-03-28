@@ -273,6 +273,9 @@ class LinUCB(ContextualBandit):
         chosen_context = x[self.chosen_action, :]
         self.Vinv = shermanMorrison(self.Vinv, chosen_context)
         self.xty += (r * chosen_context)
+        
+    def __get_param(self):
+        return {"param": self.theta_hat}
 
 
 class LinTS(ContextualBandit):
@@ -311,7 +314,10 @@ class LinTS(ContextualBandit):
         # r: reward seen (scalar)
         chosen_context = x[self.chosen_action, :]
         self.Binv = shermanMorrison(self.Binv, chosen_context)
-        self.xty += (r * chosen_context)    
+        self.xty += (r * chosen_context)
+    
+    def __get_param(self):
+        return {"param": self.theta_hat}
     
 
 class RoLFLasso(ContextualBandit):
@@ -319,15 +325,16 @@ class RoLFLasso(ContextualBandit):
         self.t = 0
         self.d = d
         self.K = arms
-        self.mu_hat = np.zeros(self.K)
+        self.mu_hat = np.zeros(self.K)      # main estimator
+        self.mu_check = np.zeros(self.K)    # imputation estimator
         self.impute_prev = np.zeros(self.K)
         self.main_prev = np.zeros(self.K)
-        self.sigma = sigma          # variance of noise
-        self.p = p                  # hyperparameter for action sampling
-        self.delta = delta          # confidence parameter
-        self.action_history = []    # history of chosen actions up to the current round
-        self.reward_history = []    # history of observed rewards up to the current round
-        self.matching = dict()      # history of rounds that the pseudo action and the chosen action matched
+        self.sigma = sigma                  # variance of noise
+        self.p = p                          # hyperparameter for action sampling
+        self.delta = delta                  # confidence parameter
+        self.action_history = []            # history of chosen actions up to the current round
+        self.reward_history = []            # history of observed rewards up to the current round
+        self.matching = dict()              # history of rounds that the pseudo action and the chosen action matched
         self.random_state = random_state
         self.explore = explore
         self.init_explore = init_explore
@@ -425,6 +432,7 @@ class RoLFLasso(ContextualBandit):
 
             ## update the mu_hat
             self.mu_hat = mu_main
+            self.mu_check = mu_impute
         else:
             self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None, None, None)
 
@@ -467,18 +475,21 @@ class RoLFLasso(ContextualBandit):
 
         # Total loss
         return residuals_sum + lam * l1_norm
-    
+
+    def __get_param(self):
+        return {"param": self.mu_hat, "impute": self.mu_check}
 
 class RoLFRidge(ContextualBandit):
     def __init__(self, d:int, arms:int, p:float, delta:float, sigma:float, random_state:int, explore:bool=False, init_explore:int=0):
         self.t = 0
         self.d = d
         self.K = arms
-        self.mu_hat = np.zeros(self.K)
-        self.sigma = sigma          # variance of noise
-        self.p = p                  # hyperparameter for action sampling
-        self.delta = delta          # confidence parameter
-        self.matching = dict()      # history of rounds that the pseudo action and the chosen action matched
+        self.mu_hat = np.zeros(self.K)      # main estimator
+        self.mu_check = np.zeros(self.K)    # imputation estimator
+        self.sigma = sigma                  # variance of noise
+        self.p = p                          # hyperparameter for action sampling
+        self.delta = delta                  # confidence parameter
+        self.matching = dict()              # history of rounds that the pseudo action and the chosen action matched
         self.Vinv_impute = self.p * np.identity(self.K)
         self.xty_impute = np.zeros(self.K)
         self.random_state = random_state
@@ -557,6 +568,7 @@ class RoLFRidge(ContextualBandit):
 
             ## update the mu_hat
             self.mu_hat = mu_main
+            self.mu_check = mu_impute
         else:
             self.matching[self.t] = ((self.pseudo_action == self.chosen_action), None, None, None, None)
 
@@ -600,6 +612,8 @@ class RoLFRidge(ContextualBandit):
         # Compute final estimation
         return scipy.linalg.inv(inv) @ score
 
+    def __get_param(self):
+        return {"param": self.mu_hat, "impute": self.mu_check}
 
 class DRLassoBandit(ContextualBandit):
     def __init__(self, d:int, arms:int, lam1:float, lam2:float, zT:float, tr:bool):
@@ -662,6 +676,9 @@ class DRLassoBandit(ContextualBandit):
         loss = np.sum((y - X @ beta) ** 2, axis=0)
         l1norm = np.sum(np.abs(beta))
         return loss + (lam * l1norm)
+    
+    def __get_param(self):
+        return self.beta_hat
     
 
 class LassoBandit(ContextualBandit):

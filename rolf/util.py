@@ -326,6 +326,12 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
     print("Result is Saved Completely!")
 
 
+def save_log(path:str, fname:str, string:str):
+    os.makedirs(path, exist_ok=True)
+    with open(f"{path}/{fname}.log", "a") as f:
+        f.write(f"{string}\n")
+
+
 def orthogonal_complement_basis(X):
     d, K = X.shape
     
