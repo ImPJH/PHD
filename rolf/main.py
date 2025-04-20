@@ -35,10 +35,19 @@ def feature_generator(case:int,
     d_u = d_z - d   # dimension of unobserved features
     assert case in [1, 2, 3], "There exists only Case 1, 2, and 3."
     if case == 1:
+        ## Default case
+        Z = np.random.multivariate_normal(mean=np.zeros(d_z), 
+                                          cov=np.eye(d_z), 
+                                          size=K).T   # (k, K)
+        X = Z[:d, :]    # (d, K)
+
+
+    # For two matrices A and B, 
+    # if each row of A can be expressed as a linear combination of the rows of B, 
+    # then R(A) ⊆ R(B)
+    elif case == 2:
         ## R(U) ⊆ R(X)
-        """For two matrices A and B, 
-        if each row of A can be expressed as a linear combination of the rows of B, 
-        then R(A) ⊆ R(B)"""
+        
         # First generate X
         X = np.random.multivariate_normal(mean=np.zeros(d), 
                                           cov=np.eye(d), 
@@ -55,8 +64,8 @@ def feature_generator(case:int,
         # Compute U as a multiplication between C and X
         U = C @ X # (d_u, K)
         Z = np.concatenate([X, U], axis=0) # (k, K)))
-
-    elif case == 2:
+    
+    elif case == 3:
         ## R(X) ⊆ R(U)
         # First generate U
         U = np.random.multivariate_normal(mean=np.zeros(d_u), 
@@ -74,13 +83,6 @@ def feature_generator(case:int,
         # Compute U as a multiplication between C and X
         X = C @ U # (d, K)
         Z = np.concatenate([X, U], axis=0) # (k, K)))
-    
-    elif case == 3:
-        ## Default case
-        Z = np.random.multivariate_normal(mean=np.zeros(d_z), 
-                                          cov=np.eye(d_z), 
-                                          size=K).T   # (k, K)
-        X = Z[:d, :]    # (d, K)
     
     return Z, X
 
@@ -272,11 +274,22 @@ def run(trial:int,
         
         if verbose:
             try:
-                string = f"case : {cfg.case}, SEED : {cfg.seed}, K : {cfg.arms}, Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}"
+                string = f"""
+                        case : {cfg.case}, SEED : {cfg.seed}, K : {cfg.arms}, 
+                        Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, 
+                        Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, 
+                        Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, 
+                        pseudo : {agent.pseudo_action}, chosen : {agent.chosen_action}
+                    """
             except:
-                string = f"case : {cfg.case}, SEED : {cfg.seed}, K : {cfg.arms}, Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}"
-            save_log(path=LOG_PATH, fname=fname, string=string)
-            print(string)
+                string = f"""
+                        case : {cfg.case}, SEED : {cfg.seed}, K : {cfg.arms}, 
+                        Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, 
+                        Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, 
+                        Round : {t+1}, optimal : {optimal_action}, chosen : {chosen_action}
+                    """
+            save_log(path=LOG_PATH, fname=fname, string=" ".join(string.split()))
+            print(" ".join(string.split()))
 
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards[chosen_action]
@@ -334,10 +347,10 @@ if __name__ == "__main__":
     AGENTS = [
         "rolf_lasso", 
         "rolf_ridge", 
-        # "dr_lasso", 
-        # "linucb", 
-        # "lints", 
-        # "mab_ucb"
+        "dr_lasso", 
+        "linucb", 
+        "lints", 
+        "mab_ucb"
               ]
     case = cfg.case
     fname = f"Case_{case}_K_{arms}_k_{k}_d_{d}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
@@ -387,7 +400,9 @@ if __name__ == "__main__":
                       horizon=T, 
                       fontsize=15)
 
-    save_plot(fig, path=FIGURE_PATH, fname=fname)
+    save_plot(fig, 
+              path=FIGURE_PATH, 
+              fname=fname)
     save_result(result=(vars(cfg), regret_results), 
                 path=RESULT_PATH, 
                 fname=fname, 
