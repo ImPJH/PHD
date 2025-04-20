@@ -179,6 +179,8 @@ def run_trials(agent_type:str,
                                  d=d,
                                  K=arms,
                                  random_state=random_state_+1)
+        print(f"Z.shape : {Z.shape}")
+        print(f"X.shape : {X.shape}")
 
         ## sample reward parameter after augmentation and compute the expected rewards
         reward_param = param_generator(dimension=k, 
@@ -208,6 +210,7 @@ def run_trials(agent_type:str,
                 data = x_aug
             else:
                 data = basis
+            print(f"basis : {basis.shape}\tx_aug : {x_aug.shape}")
         
         # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
         
@@ -330,29 +333,22 @@ if __name__ == "__main__":
     d = cfg.dim
     T = cfg.horizon
     SEED = cfg.seed
-    sigma = cfg.reward_std
     AGENTS = [
         "rolf_lasso", 
-        "rolf_ridge", 
+        # "rolf_ridge", 
         # "dr_lasso", 
         # "linucb", 
         # "lints", 
         # "mab_ucb"
               ]
+    # today = str(cfg.date)
     case = cfg.case
-    fname = f"Case_{case}_K_{arms}_k_{k}_d_{d}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
+    fname = f"Case_{case}_K_{arms}_k_{k}_d_{d}_T_{T}_delta_{cfg.delta}_explored_{cfg.init_explore}_param_{DIST_DICT[cfg.param_dist]}"
    
     # regret_results = dict()
     # for agent_type in AGENTS:
-    #     regrets = run_trials(agent_type=agent_type, 
-    #                          trials=cfg.trials, 
-    #                          horizon=T, 
-    #                          k=k, 
-    #                          d=d, 
-    #                          arms=arms, 
-    #                          noise_std=cfg.reward_std, 
-    #                          random_state=SEED, 
-    #                          verbose=True)
+    #     regrets = run_trials(agent_type=agent_type, trials=cfg.trials, horizon=T, k=k, d=d, 
+    #                          arms=arms, noise_std=cfg.reward_std, random_state=SEED, verbose=True)
     #     key = AGENT_DICT[agent_type]
     #     regret_results[key] = regrets
 
@@ -376,7 +372,7 @@ if __name__ == "__main__":
 
     # Parallel execution using ProcessPoolExecutor
     regret_results = dict()
-    with ProcessPoolExecutor(max_workers=8) as executor:
+    with ProcessPoolExecutor(max_workers=1) as executor:
         results = executor.map(run_agent, AGENTS)
 
     # Collect results

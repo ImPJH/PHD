@@ -395,6 +395,7 @@ class RoLFLasso(ContextualBandit):
         lam_impute = self.p
         lam_main = self.p
 
+        # print(f"x : {x.shape}")
         gram = x.T @ x
         gram_sqrt = matrix_sqrt(gram) 
 
@@ -402,6 +403,8 @@ class RoLFLasso(ContextualBandit):
             ## compute the imputation estimator
             data_impute = x[self.action_history, :]  # (t, d) matrix
             target_impute = np.array(self.reward_history)
+            # print(f"gram_sqrt : {gram_sqrt.shape}")
+            # print(f"impute_prev : {self.impute_prev.shape}")
             mu_impute = scipy.optimize.minimize(self.__imputation_loss, 
                                                 (gram_sqrt @ self.impute_prev), 
                                                 args=(data_impute, target_impute, lam_impute),

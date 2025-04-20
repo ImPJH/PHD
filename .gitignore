@@ -8,5 +8,6 @@ __pycache__/
 *.pyc
 mnist/
 .ipynb_checkpoints/
+figures/
 results/
 logs/
