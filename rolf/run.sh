@@ -1,11 +1,13 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 100 200)
-K_values=(20 30 40)
+seeds=$(python3 get_primes.py --nums 103 200)
+# K_values=(20 30 40)
+K_values=(30)
 k=35
 d=17  # Define the d_values array with 1, (k/2), and (k-1)
 feat_bound=1
-sigmas=(0.04 0.07 0.1)
+# sigmas=(0.04 0.07 0.1)
+sigmas=(0.04 0.1)
 param_bound=1
 T=1200
 delta=0.0001
