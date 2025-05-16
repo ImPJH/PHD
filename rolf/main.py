@@ -335,6 +335,23 @@ def show_result(regrets:dict,
     fig.tight_layout()  
     return fig
 
+# Function to run trials for a single agent
+def run_agent(agent_type):
+    regrets = run_trials(
+        agent_type=agent_type, 
+        trials=cfg.trials, 
+        horizon=cfg.horizon, 
+        k=cfg.latent_dim, 
+        d=cfg.dim, 
+        arms=cfg.arms, 
+        noise_std=cfg.reward_std,
+        case=cfg.case,
+        random_state=cfg.seed, 
+        verbose=True,
+        fname=f"Case_{cfg.case}_K_{cfg.arms}_k_{cfg.latent_dim}_d_{cfg.dim}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}"
+    )
+    key = AGENT_DICT[agent_type]
+    return key, regrets
 
 if __name__ == "__main__":
     ## hyper-parameters
@@ -369,23 +386,23 @@ if __name__ == "__main__":
     #     key = AGENT_DICT[agent_type]
     #     regret_results[key] = regrets
 
-    # Function to run trials for a single agent
-    def run_agent(agent_type):
-        regrets = run_trials(
-            agent_type=agent_type, 
-            trials=cfg.trials, 
-            horizon=T, 
-            k=k, 
-            d=d, 
-            arms=arms, 
-            noise_std=cfg.reward_std,
-            case=case,
-            random_state=SEED, 
-            verbose=True,
-            fname=fname
-        )
-        key = AGENT_DICT[agent_type]
-        return key, regrets
+    # # Function to run trials for a single agent
+    # def run_agent(agent_type):
+    #     regrets = run_trials(
+    #         agent_type=agent_type, 
+    #         trials=cfg.trials, 
+    #         horizon=T, 
+    #         k=k, 
+    #         d=d, 
+    #         arms=arms, 
+    #         noise_std=cfg.reward_std,
+    #         case=case,
+    #         random_state=SEED, 
+    #         verbose=True,
+    #         fname=fname
+    #     )
+    #     key = AGENT_DICT[agent_type]
+    #     return key, regrets
 
     # Parallel execution using ProcessPoolExecutor
     regret_results = dict()
