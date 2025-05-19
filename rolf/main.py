@@ -35,7 +35,7 @@ def feature_generator(case:int,
     assert case in [1, 2, 3], "There exists only Case 1, 2, and 3."
     if case == 1:
         ## Default case
-        np.random.seed(random_state-1)
+        np.random.seed(random_state)
         Z = np.random.multivariate_normal(mean=np.zeros(d_z), 
                                           cov=np.eye(d_z), 
                                           size=K).T   # (k, K)
@@ -47,7 +47,7 @@ def feature_generator(case:int,
     # then R(A) ⊆ R(B)
     elif case == 2:
         ## R(U) ⊆ R(X)
-        np.random.seed(random_state)
+        np.random.seed(random_state+17)
         # First generate X
         X = np.random.multivariate_normal(mean=np.zeros(d), 
                                           cov=np.eye(d), 
@@ -67,7 +67,7 @@ def feature_generator(case:int,
     
     elif case == 3:
         ## R(X) ⊆ R(U)
-        np.random.seed(random_state+1)
+        np.random.seed(random_state+31)
         # First generate U
         U = np.random.multivariate_normal(mean=np.zeros(d_u), 
                                           cov=np.eye(d_u), 
