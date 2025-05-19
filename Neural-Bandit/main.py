@@ -1,86 +1,160 @@
-from env import *
-from neuralucb import *
-from neuralts import *
+import numpy as np
 import matplotlib.pyplot as plt
-import torch
-from tqdm import trange
-from util import *
+# import seaborn as sns
+from neural_exploration import *
 
-M = 50000 # action space size
-d = 10 # dimension of "mapped" features
-k = 8 # dimension of "latent" features
-# half=$((k / 2))
-# almost=$((k - 1))
-# feat_bound=1
-sigma = 0.1
-# param_bound=1
-T = 10000 # total horizon
-K = 20
-delta=0.00001
-TRIALS = 10 # number of trials
-lamb = 1
-SEED = 103
-reward_noise_dist, reward_noise_std = "gaussian", 0.1
-m = 1
-func_type = "glm"
-learning_rates = [0.035, 0.03, 0.025, 0.01, 9e-4, 7e-4, 8e-4]
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def quadratic(x):
+    return x ** 2
+
+def cosine(x):
+    return np.cos(2 * np.pi * x)
+
+def show_result(regrets:dict, horizon:int, reward_title:str, num_visibles:int, figsize:tuple=(6, 5)):
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # 마커 스타일과 색상 설정
+    period = horizon // 10
+    markers = ['o', 's', '^', 'd', 'p']
+    colors = ['red', 'blue', 'green', 'orange', 'purple']
+    title = r"$m$"
+
+    # 각 알고리즘에 대해 에러바와 함께 그래프 그리기
+    keys = reversed(list(regrets.keys()))
+    for (marker, color), key in zip(zip(markers, colors), keys):
+        rounds = np.arange(horizon)
+        mean = np.mean(regrets[key], axis=0)
+        std = np.std(regrets[key], axis=0, ddof=1)
+        
+        # 마커와 에러 바가 있는 라인을 주기적으로 표시
+        ax.errorbar(rounds[::period], mean[::period], yerr=std[::period], label=key, 
+                    fmt=marker, color=color, capsize=3, elinewidth=1)
+        
+        # 주기적인 마커 없이 전체 라인을 표시
+        ax.plot(rounds, mean, color=color, linewidth=2)
+
+    ax.grid()
+    ax.set_xlabel(r"Round ($t$)")
+    ax.set_ylabel("Cumulative Regret")
+    ax.set_title(f"{reward_title}, {title}={num_visibles}")
+    ax.legend()
+
+    fig.tight_layout() 
+    return fig
+
+def save_plot(fig:Figure, path:str, fname:str, ext:str="pdf"):
+    os.makedirs(path, exist_ok=True)
+    fig.savefig(f"{path}/{fname}.{ext}")
+    print("Plot is Saved Completely!")
 
 if __name__ == "__main__":
-    for lr in learning_rates:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        env = Env(k=k, d=d, arms=K, action_space=M, 
-                seed=SEED, func_type=func_type, bias_dist="gaussian", 
-                num_visibles=m, check_specs=True)
+    T = int(3000)
+    n_arms = 20
+    n_obs_features = 16
+    n_latent_features = 12
+    num_visibles = reversed([n_latent_features//2, n_latent_features-1])
+    noise_std = 0.1
 
-        neuralucb = NeuralUCB(env.d, env.arms, beta=1, lamb=1, lr=lr)
-        NeuralUCBregret = [0]
-        played_optimal = 0
-        for i in trange(T):
-            context, optimal_arm, expected_reward = env.step()
-            reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=env.arms, 
-                                             std=reward_noise_std, random_state=SEED+i)
-            reward = expected_reward + reward_noise
-            arm = neuralucb.take_action(context)
-            NeuralUCBregret += [NeuralUCBregret[-1] + expected_reward[optimal_arm] - expected_reward[arm]]
-            played_optimal += (arm == optimal_arm)
-            neuralucb.update(context, arm, reward[arm])
+    confidence_scaling_factor = 1.5 * noise_std
 
-        ax.plot(NeuralUCBregret, label=f'NeuralUCB')
-        print(f'NeuralUCB, lr={lr}, Regret={NeuralUCBregret[-1]}, Played optimal={played_optimal/T}')
+    n_sim = 10
 
-        p_neuralucb = PartialNeuralUCB(env.d, env.arms, beta=1, lamb=1, lr=lr)
-        PartialNeuralUCBregret = [0]
-        played_optimal = 0
-        for i in trange(T):
-            context, optimal_arm, expected_reward = env.step()
-            context = np.concatenate([context, np.identity(env.arms)], axis=1)
-            reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=env.arms, 
-                                            std=reward_noise_std, random_state=SEED+i)
-            reward = expected_reward + reward_noise
-            arm = p_neuralucb.take_action(context)
-            PartialNeuralUCBregret += [PartialNeuralUCBregret[-1] + expected_reward[optimal_arm] - expected_reward[arm]]
-            played_optimal += (arm == optimal_arm)
-            p_neuralucb.update(context, arm, reward[arm])
+    SEED = 103
+    np.random.seed(SEED)
 
-        ax.plot(PartialNeuralUCBregret, label=f"lr={lr}")
-        print(f'NeuralUCB-PO, lr={lr}, Regret={PartialNeuralUCBregret[-1]}, Played optimal={played_optimal/T}')
+    p = 0.2
+    train_every = 10
+    use_cuda = False
 
-        # neuralts = NeuralTS(env.d, env.arms, beta=1, lamb=1)
-        # NeuralTSregret = [0]
+    PARAM_DICT = {
+        1: {
+            'hidden_size': 32,
+            'epochs': 40,
+            'reg_factor': 2.0,
+            'lr': 0.005,
+            'p': 0.15,
+            'confidence': noise_std
+        },
+        n_latent_features//2 : {
+            'hidden_size': 32,
+            'epochs': 40,
+            'reg_factor': 2.0,
+            'lr': 0.005,
+            'p':0.15,
+            'confidence': noise_std
+        },
+        n_latent_features-1: {
+            'hidden_size': 32,
+            'epochs': 40,
+            'reg_factor': 2.0,
+            'lr': 0.005,
+            'p':0.15,
+            'confidence': noise_std
+        }
+    }
+    
+    for m in num_visibles:
+        print(f"Mapped features : {m}")
+        hidden_size = PARAM_DICT[m]['hidden_size']
+        epochs = PARAM_DICT[m]['epochs']
+        ### mean reward function
+        a = np.random.randn(n_latent_features)
+        a /= np.linalg.norm(a, ord=2)
+        a = a[:m]
+        reward_func = lambda x: sigmoid(np.dot(a, x))
+        
+        regret_dict = dict()
 
+        print("NeuralUCB-PO")
+        bandit = ContextualBandit(T=T, n_arms=n_arms, n_obs_features=n_obs_features, 
+                                n_latent_features=n_latent_features,
+                                h=reward_func, num_visibles=m,
+                                noise_std=noise_std, seed=SEED, is_partial=True)
 
-        # for i in trange(T):
-        #     context, optimal_arm, expected_reward = env.step()
-        #     reward_noise = subgaussian_noise(distribution=reward_noise_dist, size=env.arms, 
-        #                                      std=reward_noise_std, random_state=SEED+i)
-        #     reward = expected_reward + reward_noise
-        #     arm = neuralts.take_action(context)
-        #     NeuralTSregret += [NeuralTSregret[-1] + expected_reward[optimal_arm] - expected_reward[arm]]
-        #     neuralts.update(context, arm, reward[arm])
+        regrets = np.empty((n_sim, T))
 
-        # ax.plot(NeuralTSregret, label='NeuralTS')
-        # print('neuralts:', NeuralTSregret[-1])
+        for i in range(n_sim):
+            # bandit = ContextualBandit(T=T, n_arms=n_arms, n_obs_features=n_obs_features, 
+            #                         n_latent_features=n_latent_features,
+            #                         h=reward_func, num_visibles=m,
+            #                         noise_std=noise_std, seed=SEED+i, is_partial=True)
+            bandit.reset_rewards()
+            model = NeuralUCB_PO(bandit, hidden_size=hidden_size, reg_factor=PARAM_DICT[m]['reg_factor'],
+                                 delta=0.1, confidence_scaling_factor=(PARAM_DICT[m]['confidence']*0.5),
+                                 training_window=100, p=(PARAM_DICT[m]['p']*2), learning_rate=PARAM_DICT[m]['lr'],
+                                 epochs=epochs, train_every=train_every, use_cuda=use_cuda)
+                
+            model.run()
+            regrets[i] = np.cumsum(model.regrets)
+            
+        regret_dict['NeuralUCB-PO'] = regrets
 
-        ax.grid()
-        ax.legend()
-        save_plot(fig, path="./", fname=f"result_num_lr_{lr}_visibles={m}_func_type_{func_type}")
+        print("NeuralUCB")
+        bandit = ContextualBandit(T=T, n_arms=n_arms, n_obs_features=n_obs_features, 
+                                n_latent_features=n_latent_features,
+                                h=reward_func, num_visibles=m,
+                                noise_std=noise_std, seed=SEED)
+
+        regrets = np.empty((n_sim, T))
+
+        for i in range(n_sim):
+            # bandit = ContextualBandit(T=T, n_arms=n_arms, n_obs_features=n_obs_features, 
+            #                           n_latent_features=n_latent_features,
+            #                           h=reward_func, num_visibles=m,
+            #                           noise_std=noise_std, seed=SEED+i)
+            bandit.reset_rewards()
+            model = NeuralUCB(bandit, hidden_size=hidden_size, reg_factor=PARAM_DICT[m]['reg_factor'],
+                              delta=0.1, confidence_scaling_factor=(PARAM_DICT[m]['confidence']*0.5),
+                              training_window=100, p=(PARAM_DICT[m]['p']), learning_rate=PARAM_DICT[m]['lr'],
+                              epochs=epochs, train_every=train_every, use_cuda=use_cuda)
+                
+            model.run()
+            regrets[i] = np.cumsum(model.regrets)
+
+        regret_dict['NeuralUCB'] = regrets
+        
+        fig = show_result(regrets=regret_dict, horizon=T, reward_title=r"$f_1(\mathbf{x}) = \sigma(\mathbf{x}^\top\mathbf{a})$", num_visibles=m)
+        fname = f"seed_{SEED}_sigmoid_m={m}_final2"
+        save_plot(fig, path=".", fname=fname)
