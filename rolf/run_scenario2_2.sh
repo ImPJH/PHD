@@ -1,6 +1,6 @@
 #!/bin/bash
 
-seeds=$(python3 get_primes.py --nums 711 845)
+seeds=$(python3 get_primes.py --nums 157 199)
 # K_values=(20 30 40)
 K_values=(25 30)
 # k=35
