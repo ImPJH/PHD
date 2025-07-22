@@ -1,3 +1,183 @@
+## TODO: Change for 2 feature matrix X,Y and U,V
+## Maybe there has 9 different case, combination of X is (default,R(U) ⊆ R(X), R(X) ⊆ R(U)) and Y is (default,R(V) ⊆ R(Y), R(Y) ⊆ R(V))
+
+from cfg import get_cfg
+from models import *
+from util import *
+
+MOTHER_PATH = "."
+
+DIST_DICT = {"gaussian": "g", "uniform": "u"}
+
+AGENT_DICT = {
+    "mab_ucb": r"UCB($\delta$)",
+    "linucb": "LinUCB",
+    "lints": "LinTS",
+    "rolf_lasso": "RoLF-Lasso (Ours)",
+    "rolf_ridge": "RoLF-Ridge (Ours)",
+    "dr_lasso": "DRLasso",
+}
+
+cfg = get_cfg()
+
+RESULT_PATH = f"{MOTHER_PATH}/results/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+FIGURE_PATH = f"{MOTHER_PATH}/figures/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+LOG_PATH = (
+    f"{MOTHER_PATH}/logs/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+)
+
+## ~! Generate feature matrix Z(full feature), X(observerable feature) !~
+
+
+# Case 1: default, default
+# Case 2: default, R(V) ⊆ R(Y)
+# Case 3: default, R(Y) ⊆ R(V)
+
+# Case 4: R(U) ⊆ R(X), default
+# Case 5: R(U) ⊆ R(X), R(V) ⊆ R(Y)
+# Case 6: R(U) ⊆ R(X), R(Y) ⊆ R(V)
+
+# Case 7: R(X) ⊆ R(U), default
+# Case 8: R(X) ⊆ R(U), R(V) ⊆ R(Y)
+# Case 9: R(X) ⊆ R(U), R(Y) ⊆ R(V)
+
+
+def feature_generator(
+    case: int,
+    d_x_star: int,
+    d_x: int,
+    d_y_star: int,
+    d_y: int,
+    M: int,
+    N: int,
+    random_state: int,
+):
+    ## sample the true, observable, and unobservable features
+    d_u = d_x_star - d_x  # dimension of unobserved feature(x)
+    d_v = d_y_star - d_y  # dimension of unobserved feature(y)
+
+    assert case in [1, 2, 3, 4, 5, 6, 7, 8, 9], "There exists only Case 1, 2, and 3."
+
+    ## For feature x
+    if case in [1, 2, 3]:
+        ## X is Default case
+        np.random.seed(random_state)
+        X_star = np.random.multivariate_normal(
+            mean=np.zeros(d_x_star), cov=np.eye(d_x_star), size=M
+        ).T  # (d_x_star, M)
+        X = X_star[:d_x, :]  # (d_x, M)
+
+    # For two matrices A and B,
+    # if each row of A can be expressed as a linear combination of the rows of B,
+    # then R(A) ⊆ R(B)
+    elif case in [4, 5, 6]:
+
+        ## ~! When observable feature dominates !~
+
+        ## R(U) ⊆ R(X)
+        np.random.seed(random_state + 17)
+        # First generate X
+        X = np.random.multivariate_normal(
+            mean=np.zeros(d_x), cov=np.eye(d_x), size=M
+        ).T  # (d_x, M)
+
+        # Generate a coefficient matrix C
+        # C = np.random.multivariate_normal(mean=np.zeros(d_x),
+        #                                   cov=np.eye(d_x),
+        #                                   size=d_u).T # (d_u, d_x)
+        C = np.random.uniform(
+            low=-1 / np.pi, high=1 / np.pi, size=(d_u, d_x)
+        )  # (d_u, d_x)
+
+        # Compute U as a multiplication between C and X
+        U = C @ X  # (d_u, M)
+        X_star = np.concatenate([X, U], axis=0)  # (d_x_star, M)))
+
+    elif case in [7, 8, 9]:
+
+        ## ~! When the unobservable feature dominates !~
+
+        ## R(X) ⊆ R(U)
+        np.random.seed(random_state + 31)
+        # First generate U
+        U = np.random.multivariate_normal(
+            mean=np.zeros(d_u), cov=np.eye(d_u), size=M
+        ).T  # (d_u, M)
+
+        # Generate a coefficient matrix C
+        # C = np.random.multivariate_normal(mean=np.zeros(d_x),
+        #                                   cov=np.eye(d_x),
+        #                                   size=d_u).T # (d_x, d_u)
+        C = np.random.uniform(
+            low=-1 / np.pi, high=1 / np.pi, size=(d_x, d_u)
+        )  # (d_x, d_u)
+
+        # Compute U as a multiplication between C and X
+        X = C @ U  # (d_x, M)
+        X_star = np.concatenate([X, U], axis=0)  # (d_x_star, M)))
+
+    ## For feature y,
+    if case in [1, 4, 7]:
+        ## Y is Default case
+        np.random.seed(random_state)
+        Y_star = np.random.multivariate_normal(
+            mean=np.zeros(d_y_star), cov=np.eye(d_y_star), size=N
+        ).T  # (d_y_star, N)
+        Y = Y_star[:d_x, :]  # (d_y, N)
+
+    # For two matrices A and B,
+    # if each row of A can be expressed as a linear combination of the rows of B,
+    # then R(A) ⊆ R(B)
+    elif case in [2, 5, 8]:
+
+        ## ~! When observable feature dominates !~
+
+        ## R(V) ⊆ R(Y)
+        np.random.seed(random_state + 17)
+
+        # First generate Y
+        Y = np.random.multivariate_normal(
+            mean=np.zeros(d_y), cov=np.eye(d_y), size=N
+        ).T  # (d_y, N)
+
+        # Generate a coefficient matrix C
+        # C = np.random.multivariate_normal(mean=np.zeros(d_y),
+        #                                   cov=np.eye(d_y),
+        #                                   size=d_v).T # (d_v, d_y)
+        C = np.random.uniform(
+            low=-1 / np.pi, high=1 / np.pi, size=(d_v, d_y)
+        )  # (d_v, d_y)
+
+        # Compute U as a multiplication between C and Y
+        V = C @ Y  # (d_v, N)
+        Y_star = np.concatenate([Y, V], axis=0)  # (d_y_star, N)))
+
+    elif case in [3, 6, 9]:
+
+        ## ~! When the unobservable feature dominates !~
+
+        ## R(Y) ⊆ R(V)
+        np.random.seed(random_state + 31)
+        # First generate V
+        V = np.random.multivariate_normal(
+            mean=np.zeros(d_v), cov=np.eye(d_v), size=N
+        ).T  # (d_v, N)
+
+        # Generate a coefficient matrix C
+        # C = np.random.multivariate_normal(mean=np.zeros(d_y),
+        #                                   cov=np.eye(d_y),
+        #                                   size=d_v).T # (d_y, d_v)
+        C = np.random.uniform(
+            low=-1 / np.pi, high=1 / np.pi, size=(d_y, d_v)
+        )  # (d_y, d_v)
+
+        # Compute U as a multiplication between C and X
+        Y = C @ V  # (d_y, N)
+        Z = np.concatenate([Y, V], axis=0)  # (d_y_star, N)))
+
+    return X_star, X, Y_star, Y
+
+
 from cfg import get_cfg
 from models import *
 from util import *
