@@ -1,3 +1,5 @@
+## TODO: Make new agent for Bilinear model....
+
 import numpy as np
 from util import *
 from abc import ABC, abstractmethod
@@ -362,9 +364,15 @@ class RoLFLasso(ContextualBandit):
         pseudo_action = -1
         chosen_action = -2
         count = 0
+
+        ## ~! rho_t !~ ##
         max_iter = int(np.log((self.t + 1) ** 2 / self.delta) / np.log(1 / self.p))
+
+        ## ~! phi_t !~ ##
         pseudo_dist = np.array([(1 - self.p) / (self.K - 1)] * self.K, dtype=float)
         pseudo_dist[a_hat] = self.p
+
+        ## ~! epsilon(sqrt(t))-greedy ~! ##
         chosen_dist = np.array([(1 / np.sqrt(self.t)) / (self.K - 1)] * self.K, dtype=float)
         chosen_dist[a_hat] = 1 - (1 / np.sqrt(self.t))
 

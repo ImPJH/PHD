@@ -4,10 +4,7 @@ from util import *
 
 MOTHER_PATH = "."
 
-DIST_DICT = {
-    "gaussian": "g",
-    "uniform": "u"
-}
+DIST_DICT = {"gaussian": "g", "uniform": "u"}
 
 AGENT_DICT = {
     "mab_ucb": r"UCB($\delta$)",
@@ -15,99 +12,102 @@ AGENT_DICT = {
     "lints": "LinTS",
     "rolf_lasso": "RoLF-Lasso (Ours)",
     "rolf_ridge": "RoLF-Ridge (Ours)",
-    "dr_lasso": "DRLasso"
+    "dr_lasso": "DRLasso",
 }
 
 cfg = get_cfg()
 
 RESULT_PATH = f"{MOTHER_PATH}/results/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
 FIGURE_PATH = f"{MOTHER_PATH}/figures/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
-LOG_PATH = f"{MOTHER_PATH}/logs/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+LOG_PATH = (
+    f"{MOTHER_PATH}/logs/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+)
+
+## ~! Generate feature matrix Z(full feature), X(observerable feature) !~
 
 
-def feature_generator(case:int, 
-                      d_z:int,
-                      d:int,
-                      K:int,
-                      random_state:int):
+def feature_generator(case: int, d_z: int, d: int, K: int, random_state: int):
     ## sample the true, observable, and unobservable features
-    d_u = d_z - d   # dimension of unobserved features
+    d_u = d_z - d  # dimension of unobserved features
     assert case in [1, 2, 3], "There exists only Case 1, 2, and 3."
     if case == 1:
         ## Default case
         np.random.seed(random_state)
-        Z = np.random.multivariate_normal(mean=np.zeros(d_z), 
-                                          cov=np.eye(d_z), 
-                                          size=K).T   # (k, K)
-        X = Z[:d, :]    # (d, K)
+        Z = np.random.multivariate_normal(
+            mean=np.zeros(d_z), cov=np.eye(d_z), size=K
+        ).T  # (k, K)
+        X = Z[:d, :]  # (d, K)
 
-
-    # For two matrices A and B, 
-    # if each row of A can be expressed as a linear combination of the rows of B, 
+    # For two matrices A and B,
+    # if each row of A can be expressed as a linear combination of the rows of B,
     # then R(A) ⊆ R(B)
     elif case == 2:
+
+        ## ~! When observable feature dominates !~
+
         ## R(U) ⊆ R(X)
-        np.random.seed(random_state+17)
+        np.random.seed(random_state + 17)
         # First generate X
-        X = np.random.multivariate_normal(mean=np.zeros(d), 
-                                          cov=np.eye(d), 
-                                          size=K).T # (d, K)
-        
+        X = np.random.multivariate_normal(
+            mean=np.zeros(d), cov=np.eye(d), size=K
+        ).T  # (d, K)
+
         # Generate a coefficient matrix C
-        # C = np.random.multivariate_normal(mean=np.zeros(d), 
-        #                                   cov=np.eye(d), 
+        # C = np.random.multivariate_normal(mean=np.zeros(d),
+        #                                   cov=np.eye(d),
         #                                   size=d_u).T # (d_u, d)
-        C = np.random.uniform(low=-1/np.pi,
-                              high=1/np.pi,
-                              size=(d_u, d)) # (d_u, d)
-        
+        C = np.random.uniform(low=-1 / np.pi, high=1 / np.pi, size=(d_u, d))  # (d_u, d)
+
         # Compute U as a multiplication between C and X
-        U = C @ X # (d_u, K)
-        Z = np.concatenate([X, U], axis=0) # (k, K)))
-    
+        U = C @ X  # (d_u, K)
+        Z = np.concatenate([X, U], axis=0)  # (k, K)))
+
     elif case == 3:
+
+        ## ~! When the unobservable feature dominates !~
+
         ## R(X) ⊆ R(U)
-        np.random.seed(random_state+31)
+        np.random.seed(random_state + 31)
         # First generate U
-        U = np.random.multivariate_normal(mean=np.zeros(d_u), 
-                                          cov=np.eye(d_u), 
-                                          size=K).T # (d_u, K)
-        
+        U = np.random.multivariate_normal(
+            mean=np.zeros(d_u), cov=np.eye(d_u), size=K
+        ).T  # (d_u, K)
+
         # Generate a coefficient matrix C
-        # C = np.random.multivariate_normal(mean=np.zeros(d), 
-        #                                   cov=np.eye(d), 
+        # C = np.random.multivariate_normal(mean=np.zeros(d),
+        #                                   cov=np.eye(d),
         #                                   size=d_u).T # (d, d_u)
-        C = np.random.uniform(low=-1/np.pi, 
-                              high=1/np.pi, 
-                              size=(d, d_u)) # (d, d_u)
-        
+        C = np.random.uniform(low=-1 / np.pi, high=1 / np.pi, size=(d, d_u))  # (d, d_u)
+
         # Compute U as a multiplication between C and X
-        X = C @ U # (d, K)
-        Z = np.concatenate([X, U], axis=0) # (k, K)))
-    
+        X = C @ U  # (d, K)
+        Z = np.concatenate([X, U], axis=0)  # (k, K)))
+
     return Z, X
 
 
-def run_trials(agent_type:str, 
-               trials:int, 
-               horizon:int, 
-               k:int, 
-               d:int, 
-               arms:int, 
-               noise_std:float, 
-               case:int,
-               random_state:int, 
-               verbose:bool,
-               fname:str):
-    
+def run_trials(
+    agent_type: str,
+    trials: int,
+    horizon: int,
+    k: int,
+    d: int,
+    arms: int,
+    noise_std: float,
+    case: int,
+    random_state: int,
+    verbose: bool,
+    fname: str,
+):
+
     exp_map = {
         "double": (2 * arms),
-        "sqr": (arms ** 2),
+        "sqr": (arms**2),
         "K": arms,
         "triple": (3 * arms),
-        "quad": (4 * arms)
-    } 
-    
+        "quad": (4 * arms),
+    }
+
     ## run and collect the regrets
     regret_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
@@ -117,129 +117,136 @@ def run_trials(agent_type:str,
             random_state_ = None
 
         if agent_type == "linucb":
-            agent = LinUCB(d=d, 
-                           lbda=cfg.p, 
-                           delta=cfg.delta)
-            
+            agent = LinUCB(d=d, lbda=cfg.p, delta=cfg.delta)
+
         elif agent_type == "lints":
-            agent = LinTS(d=d, 
-                          lbda=cfg.p, 
-                          horizon=horizon, 
-                          reward_std=noise_std, 
-                          delta=cfg.delta)
-            
+            agent = LinTS(
+                d=d, lbda=cfg.p, horizon=horizon, reward_std=noise_std, delta=cfg.delta
+            )
+
         elif agent_type == "mab_ucb":
-            agent = UCBDelta(n_arms=arms, 
-                             delta=cfg.delta)
-            
+            agent = UCBDelta(n_arms=arms, delta=cfg.delta)
+
         elif agent_type == "rolf_lasso":
             if cfg.explore:
-                agent = RoLFLasso(d=d, 
-                                  arms=arms, 
-                                  p=cfg.p, 
-                                  delta=cfg.delta, 
-                                  sigma=noise_std, 
-                                  random_state=random_state_, 
-                                  explore=cfg.explore, 
-                                  init_explore=exp_map[cfg.init_explore])
+                agent = RoLFLasso(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                    explore=cfg.explore,
+                    init_explore=exp_map[cfg.init_explore],
+                )
             else:
-                agent = RoLFLasso(d=d, 
-                                  arms=arms, 
-                                  p=cfg.p, 
-                                  delta=cfg.delta, 
-                                  sigma=noise_std, 
-                                  random_state=random_state_)
-                
+                agent = RoLFLasso(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                )
+
         elif agent_type == "rolf_ridge":
             if cfg.explore:
-                agent = RoLFRidge(d=d, 
-                                  arms=arms, 
-                                  p=cfg.p, 
-                                  delta=cfg.delta, 
-                                  sigma=noise_std, 
-                                  random_state=random_state_,
-                                  explore=cfg.explore, 
-                                  init_explore=exp_map[cfg.init_explore])
+                agent = RoLFRidge(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                    explore=cfg.explore,
+                    init_explore=exp_map[cfg.init_explore],
+                )
             else:
-                agent = RoLFRidge(d=d, 
-                                  arms=arms, 
-                                  p=cfg.p, 
-                                  delta=cfg.delta, 
-                                  sigma=noise_std, 
-                                  random_state=random_state_)
-                
+                agent = RoLFRidge(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                )
+
         elif agent_type == "dr_lasso":
-            agent = DRLassoBandit(d=d, 
-                                  arms=arms, 
-                                  lam1=1., 
-                                  lam2=0.5, 
-                                  zT=10, 
-                                  tr=True)
-            
+            agent = DRLassoBandit(d=d, arms=arms, lam1=1.0, lam2=0.5, zT=10, tr=True)
+
         ## sample features
-        Z, X = feature_generator(case=case,
-                                 d_z=k,
-                                 d=d,
-                                 K=arms,
-                                 random_state=random_state_+1)
+        Z, X = feature_generator(
+            case=case, d_z=k, d=d, K=arms, random_state=random_state_ + 1
+        )
 
         ## sample reward parameter after augmentation and compute the expected rewards
-        reward_param = param_generator(dimension=k, 
-                                       distribution=cfg.param_dist, 
-                                       disjoint=cfg.param_disjoint, 
-                                       bound=cfg.param_bound, 
-                                       bound_type=cfg.param_bound_type, 
-                                       uniform_rng=cfg.param_uniform_rng, 
-                                       random_state=random_state_)
-        
-        ## (K, ) vector with the maximum absolute value does not exceed 1
-        exp_rewards = bounding(type="param", 
-                               v=Z.T @ reward_param, 
-                               bound=1., 
-                               norm_type="lsup") 
+        reward_param = param_generator(
+            dimension=k,
+            distribution=cfg.param_dist,
+            disjoint=cfg.param_disjoint,
+            bound=cfg.param_bound,
+            bound_type=cfg.param_bound_type,
+            uniform_rng=cfg.param_uniform_rng,
+            random_state=random_state_,
+        )
 
-        if isinstance(agent, LinUCB) or isinstance(agent, LinTS) or isinstance(agent, DRLassoBandit):
+        ## (K, ) vector with the maximum absolute value does not exceed 1
+        exp_rewards = bounding(
+            type="param", v=Z.T @ reward_param, bound=1.0, norm_type="lsup"
+        )
+
+        if (
+            isinstance(agent, LinUCB)
+            or isinstance(agent, LinTS)
+            or isinstance(agent, DRLassoBandit)
+        ):
             data = X.T  # (K, d)
         else:
             # (K, K-d) matrix and each column vector denotes the orthogonal basis if K > d
             # (K, K) matrix from singular value decomposition if d > K
-            basis = orthogonal_complement_basis(X) 
+            basis = orthogonal_complement_basis(X)
 
             d, K = X.shape
             if d <= K:
-                x_aug = np.hstack((X.T, basis)) # augmented into (K, K) matrix and each row vector denotes the augmented feature
+                x_aug = np.hstack(
+                    (X.T, basis)
+                )  # augmented into (K, K) matrix and each row vector denotes the augmented feature
                 data = x_aug
             else:
                 data = basis
-        
+
         # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
-        
-        regrets = run(trial=trial, 
-                      agent=agent, 
-                      horizon=horizon, 
-                      exp_rewards=exp_rewards, 
-                      x=data, 
-                      noise_dist=cfg.reward_dist, 
-                      noise_std=noise_std, 
-                      random_state=random_state_, 
-                      verbose=verbose,
-                      fname=fname)
-        
+
+        regrets = run(
+            trial=trial,
+            agent=agent,
+            horizon=horizon,
+            exp_rewards=exp_rewards,
+            x=data,
+            noise_dist=cfg.reward_dist,
+            noise_std=noise_std,
+            random_state=random_state_,
+            verbose=verbose,
+            fname=fname,
+        )
+
         regret_container[trial] = regrets
     return regret_container
 
 
-def run(trial:int, 
-        agent:Union[MAB, ContextualBandit], 
-        horizon:int, 
-        exp_rewards:np.ndarray, 
-        x:np.ndarray, 
-        noise_dist:str, 
-        noise_std:float, 
-        random_state:int, 
-        verbose:bool,
-        fname:str):
-    
+def run(
+    trial: int,
+    agent: Union[MAB, ContextualBandit],
+    horizon: int,
+    exp_rewards: np.ndarray,
+    x: np.ndarray,
+    noise_dist: str,
+    noise_std: float,
+    random_state: int,
+    verbose: bool,
+    fname: str,
+):
+
     # x: augmented feature if the agent is RoLF (K, K)
     regrets = np.zeros(horizon, dtype=float)
 
@@ -256,23 +263,22 @@ def run(trial:int,
 
         # if t == 0:
         #     print(f"Number of actions : {x.shape[0]}\tReward range : [{np.amin(exp_rewards):.5f}, {np.amax(exp_rewards):.5f}]")
-        
+
         ## compute the optimal action
         optimal_action = np.argmax(exp_rewards)
         optimal_reward = exp_rewards[optimal_action]
 
         ## choose the best action
-        noise = subgaussian_noise(distribution=noise_dist, 
-                                  size=1, 
-                                  std=noise_std, 
-                                  random_state=random_state_)
-        
+        noise = subgaussian_noise(
+            distribution=noise_dist, size=1, std=noise_std, random_state=random_state_
+        )
+
         if isinstance(agent, ContextualBandit):
             chosen_action = agent.choose(x)
         else:
             chosen_action = agent.choose()
         chosen_reward = exp_rewards[chosen_action] + noise
-        
+
         if verbose:
             try:
                 string = f"""
@@ -304,85 +310,86 @@ def run(trial:int,
     return np.cumsum(regrets)
 
 
-def show_result(regrets:dict, 
-                horizon:int, 
-                figsize:tuple=(6, 5), 
-                fontsize=11):
-    
+def show_result(regrets: dict, horizon: int, figsize: tuple = (6, 5), fontsize=11):
+
     fig, ax = plt.subplots(figsize=figsize)
-    
-    colors = ['blue', 'orange', 'green', 'red', 'purple', 'black']
+
+    colors = ["blue", "orange", "green", "red", "purple", "black"]
     period = horizon // 10
-    
+
     z_init = len(colors)
     # Plot the graph for each algorithm with error bars
     for i, (color, (key, item)) in enumerate(zip(colors, regrets.items())):
         rounds = np.arange(horizon)
         mean = np.mean(item, axis=0)
         std = np.std(item, axis=0, ddof=1)
-        
+
         # Display the line with markers and error bars periodically
-        ax.errorbar(rounds[::period], mean[::period], yerr=std[::period], label=f"{key}", 
-                    fmt='s', color=color, capsize=3, elinewidth=1, zorder=z_init-i)
-        
+        ax.errorbar(
+            rounds[::period],
+            mean[::period],
+            yerr=std[::period],
+            label=f"{key}",
+            fmt="s",
+            color=color,
+            capsize=3,
+            elinewidth=1,
+            zorder=z_init - i,
+        )
+
         # Display the full line without periodic markers
-        ax.plot(rounds, mean, color=color, linewidth=2, zorder=z_init-i)
-    
+        ax.plot(rounds, mean, color=color, linewidth=2, zorder=z_init - i)
+
     ax.grid(True)
     ax.set_xlabel(r"Round ($t$)")
     ax.set_ylabel("Cumulative Regret")
     ax.legend(loc="upper left", fontsize=fontsize)
-    
-    fig.tight_layout()  
+
+    fig.tight_layout()
     return fig
+
 
 # Function to run trials for a single agent
 def run_agent(agent_type):
     regrets = run_trials(
-        agent_type=agent_type, 
-        trials=cfg.trials, 
-        horizon=cfg.horizon, 
-        k=cfg.latent_dim, 
-        d=cfg.dim, 
-        arms=cfg.arms, 
+        agent_type=agent_type,
+        trials=cfg.trials,
+        horizon=cfg.horizon,
+        k=cfg.latent_dim,
+        d=cfg.dim,
+        arms=cfg.arms,
         noise_std=cfg.reward_std,
         case=cfg.case,
-        random_state=cfg.seed, 
+        random_state=cfg.seed,
         verbose=True,
-        fname=f"Case_{cfg.case}_K_{cfg.arms}_k_{cfg.latent_dim}_d_{cfg.dim}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}"
+        fname=f"Case_{cfg.case}_K_{cfg.arms}_k_{cfg.latent_dim}_d_{cfg.dim}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
     )
     key = AGENT_DICT[agent_type]
     return key, regrets
 
+
 if __name__ == "__main__":
     ## hyper-parameters
-    arms = cfg.arms # List[int]
+    arms = cfg.arms  # List[int]
     k = cfg.latent_dim
     d = cfg.dim
     T = cfg.horizon
     SEED = cfg.seed
     sigma = cfg.reward_std
-    AGENTS = [
-        "rolf_lasso", 
-        "rolf_ridge", 
-        "dr_lasso", 
-        "linucb", 
-        "lints", 
-        "mab_ucb"
-              ]
+    AGENTS = ["rolf_lasso", "rolf_ridge", "dr_lasso", "linucb", "lints", "mab_ucb"]
     case = cfg.case
     fname = f"Case_{case}_K_{arms}_k_{k}_d_{d}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
-   
+
     # regret_results = dict()
     # for agent_type in AGENTS:
-    #     regrets = run_trials(agent_type=agent_type, 
-    #                          trials=cfg.trials, 
-    #                          horizon=T, 
-    #                          k=k, 
-    #                          d=d, 
-    #                          arms=arms, 
-    #                          noise_std=cfg.reward_std, 
-    #                          random_state=SEED, 
+    #     regrets = run_trials(agent_type=agent_type,
+    #                          trials=cfg.trials,
+    #                          horizon=T,
+    #                          k=k,
+    #                          d=d,
+    #                          arms=arms,
+    #                          noise_std=cfg.reward_std,
+    #                          random_state=SEED,
     #                          verbose=True)
     #     key = AGENT_DICT[agent_type]
     #     regret_results[key] = regrets
@@ -390,15 +397,15 @@ if __name__ == "__main__":
     # # Function to run trials for a single agent
     # def run_agent(agent_type):
     #     regrets = run_trials(
-    #         agent_type=agent_type, 
-    #         trials=cfg.trials, 
-    #         horizon=T, 
-    #         k=k, 
-    #         d=d, 
-    #         arms=arms, 
+    #         agent_type=agent_type,
+    #         trials=cfg.trials,
+    #         horizon=T,
+    #         k=k,
+    #         d=d,
+    #         arms=arms,
     #         noise_std=cfg.reward_std,
     #         case=case,
-    #         random_state=SEED, 
+    #         random_state=SEED,
     #         verbose=True,
     #         fname=fname
     #     )
@@ -413,15 +420,13 @@ if __name__ == "__main__":
     # Collect results
     for key, regrets in results:
         regret_results[key] = regrets
-    
-    fig = show_result(regrets=regret_results, 
-                      horizon=T, 
-                      fontsize=15)
 
-    save_plot(fig, 
-              path=FIGURE_PATH, 
-              fname=fname)
-    save_result(result=(vars(cfg), regret_results), 
-                path=RESULT_PATH, 
-                fname=fname, 
-                filetype=cfg.filetype)
+    fig = show_result(regrets=regret_results, horizon=T, fontsize=15)
+
+    save_plot(fig, path=FIGURE_PATH, fname=fname)
+    save_result(
+        result=(vars(cfg), regret_results),
+        path=RESULT_PATH,
+        fname=fname,
+        filetype=cfg.filetype,
+    )
