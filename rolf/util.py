@@ -45,6 +45,15 @@ def vector_norm(v:np.ndarray, type:str):
     v = v.flatten()
     return np.linalg.norm(v, ord=type_dict[type])
 
+def matrix_norm(M:np.ndarray, type:str):
+    types = ["l1l1", "fro"]
+    assert type in types, f"Type of the vector norm should be one of {types}."
+    
+    if type == "l1l1":
+        return np.sum(np.abs(M))
+    elif type == "fro":
+        return np.linalg.norm(M,"fro")
+
 
 def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None, variances:Union[list, np.ndarray]=None):
     ## Generates a random covariance matrix
