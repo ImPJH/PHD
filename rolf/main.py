@@ -178,6 +178,173 @@ def feature_generator(
     return X_star, X, Y_star, Y
 
 
+def run_trials(
+    agent_type: str,
+    trials: int,
+    horizon: int,
+    k: int,
+    d: int,
+    arms: int,
+    noise_std: float,
+    case: int,
+    random_state: int,
+    verbose: bool,
+    fname: str,
+):
+
+    exp_map = {
+        "double": (2 * arms),
+        "sqr": (arms**2),
+        "K": arms,
+        "triple": (3 * arms),
+        "quad": (4 * arms),
+    }
+
+    ## run and collect the regrets
+    regret_container = np.zeros(trials, dtype=object)
+    for trial in range(trials):
+        if random_state is not None:
+            random_state_ = random_state + (513 * trial)
+        else:
+            random_state_ = None
+
+        # if agent_type == "linucb":
+        #     agent = LinUCB(d=d, lbda=cfg.p, delta=cfg.delta)
+
+        # elif agent_type == "lints":
+        #     agent = LinTS(
+        #         d=d, lbda=cfg.p, horizon=horizon, reward_std=noise_std, delta=cfg.delta
+        #     )
+
+        # elif agent_type == "mab_ucb":
+        #     agent = UCBDelta(n_arms=arms, delta=cfg.delta)
+
+        if agent_type == "rolf_lasso":
+            if cfg.explore:
+                agent = RoLFLasso(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                    explore=cfg.explore,
+                    init_explore=exp_map[cfg.init_explore],
+                )
+            else:
+                agent = RoLFLasso(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                )
+
+        elif agent_type == "rolf_ridge":
+            if cfg.explore:
+                agent = RoLFRidge(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                    explore=cfg.explore,
+                    init_explore=exp_map[cfg.init_explore],
+                )
+            else:
+                agent = RoLFRidge(
+                    d=d,
+                    arms=arms,
+                    p=cfg.p,
+                    delta=cfg.delta,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                )
+
+        elif agent_type == "dr_lasso":
+            agent = DRLassoBandit(d=d, arms=arms, lam1=1.0, lam2=0.5, zT=10, tr=True)
+
+        ## sample features
+        Z, X = feature_generator(
+            case=case, d_z=k, d=d, K=arms, random_state=random_state_ + 1
+        )
+
+        ## sample reward parameter after augmentation and compute the expected rewards
+        reward_param = param_generator(
+            dimension=k,
+            distribution=cfg.param_dist,
+            disjoint=cfg.param_disjoint,
+            bound=cfg.param_bound,
+            bound_type=cfg.param_bound_type,
+            uniform_rng=cfg.param_uniform_rng,
+            random_state=random_state_,
+        )
+
+        ## (K, ) vector with the maximum absolute value does not exceed 1
+        exp_rewards = bounding(
+            type="param", v=Z.T @ reward_param, bound=1.0, norm_type="lsup"
+        )
+
+        if (
+            isinstance(agent, LinUCB)
+            or isinstance(agent, LinTS)
+            or isinstance(agent, DRLassoBandit)
+        ):
+            data = X.T  # (K, d)
+        else:
+            # (K, K-d) matrix and each column vector denotes the orthogonal basis if K > d
+            # (K, K) matrix from singular value decomposition if d > K
+            basis = orthogonal_complement_basis(X)
+
+            d, K = X.shape
+            if d <= K:
+                x_aug = np.hstack(
+                    (X.T, basis)
+                )  # augmented into (K, K) matrix and each row vector denotes the augmented feature
+                data = x_aug
+            else:
+                data = basis
+
+        # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
+
+        regrets = run(
+            trial=trial,
+            agent=agent,
+            horizon=horizon,
+            exp_rewards=exp_rewards,
+            x=data,
+            noise_dist=cfg.reward_dist,
+            noise_std=noise_std,
+            random_state=random_state_,
+            verbose=verbose,
+            fname=fname,
+        )
+
+        regret_container[trial] = regrets
+    return regret_container
+
+
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+
+
 from cfg import get_cfg
 from models import *
 from util import *
