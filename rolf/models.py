@@ -1002,13 +1002,22 @@ class BiRoLFLasso(ContextualBandit):
             pseudo_action = pseudo_action_i * self.N + pseudo_action_j
 
             ## Sample the chosen action
-            chosen_action = np.random.choice(
-                [i for i in range(self.M * self.N)],
-                size=1,
-                replace=False,
-                p=chosen_dist,
+            chosen_action_i = np.random.choice(
+                [i for i in range(self.M)], size=1, replace=False, p=pseudo_dist_x
             ).item()
+            chosen_action_j = np.random.choice(
+                [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
+            ).item()
+
+            chosen_action = chosen_action_i * self.N + chosen_action_j
             count += 1
+
+            # chosen_action = np.random.choice(
+            #     [i for i in range(self.M * self.N)],
+            #     size=1,
+            #     replace=False,
+            #     p=chosen_dist,         
+            # ).item()
 
         self.action_history.append(chosen_action)  # add to the history
         self.pseudo_action = pseudo_action
@@ -1182,3 +1191,4 @@ class BiRoLFLasso(ContextualBandit):
 
     def __get_param(self):
         return {"param": self.Phi_hat, "impute": self.Phi_check}
+    
