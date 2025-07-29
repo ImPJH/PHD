@@ -1,5 +1,3 @@
-## TODO: Make new agent for Bilinear model....
-
 import numpy as np
 from util import *
 from abc import ABC, abstractmethod
@@ -933,42 +931,41 @@ class LassoBandit(ContextualBandit):
         l1norm = np.sum(np.abs(beta))
         return loss + (lam * l1norm)
 
-
 class BiRoLFLasso(ContextualBandit):
-    def __init__(
-        self,
-        p1: float,
-        p2: float,
-        delta: float,
+    def __init__(self,
+        M: int,
+        N: int,
         sigma: float,
         random_state: int,
+        delta: float,
+        p: float,
         explore: bool = False,
         init_explore: int = 0,
-    ):
-        self.p1 = p1
-        self.p2 = p2
-        self.delta = delta
-        self.sigma = sigma
-        self.random_state = random_state
+                 ):
+        self.t = 0
         self.explore = explore
         self.init_explore = init_explore
-        self.t = 0
-        self.M = 0
-        self.N = 0
+        self.M = M
+        self.N = N
+        self.delta = delta
+        self.p = p
+        self.random_state = random_state
+        self.sigma = sigma
+
         self.action_history = []
-        self.pseudo_action = 0
-        self.chosen_action = 0
-        self.impute_prev = np.zeros(self.M * self.N)
-        self.main_prev = np.zeros(self.M * self.N)
-        self.matching = {}
-        self.Phi_hat = np.zeros(self.M * self.N)
-        self.Phi_check = np.zeros(self.M * self.N)
-        self.kappa_x = 0
-        self.kappa_y = 0
+        self.reward_history = []
+
+        self.matching = (
+            dict()
+        )
+        self.Phi_hat = np.zeros((self.M,self.N))
+        self.Phi_check = np.zeros((self.M,self.N))
+        self.impute_prev = np.zeros((self.M,self.N))
+        self.main_prev = np.zeros((self.M,self.N))
 
     def choose(self, x: np.ndarray, y: np.ndarray):
-        # x : (M, d_x_star) augmented feature matrix where each row denotes the augmented features
-        # y : (N, d_y_star) augmented feature matrix where each row denotes the augmented features
+        # x : (M, M) augmented feature matrix where each row denotes the augmented features
+        # y : (N, N) augmented feature matrix where each row denotes the augmented features
 
         self.t += 1
 
@@ -1078,15 +1075,18 @@ class BiRoLFLasso(ContextualBandit):
         # lam_impute = self.p
         # lam_main = self.p
 
+        kappa_x = np.power(np.sum(np.power(np.max(np.abs(x), axis=1), 4)),0.25)
+        kappa_y = np.power(np.sum(np.power(np.max(np.abs(y), axis=1), 4)),0.25)
+
         lam_impute = (
             2
             * self.sigma
-            * self.kappa_x
-            * self.kappa_y
+            * kappa_x
+            * kappa_y
             * np.sqrt(2 * self.t * np.log(2 * self.M * self.N / self.delta))
         )
         lam_main = (
-            4 * self.sigma * self.kappa_x * self.kappa_y / (self.p**2)
+            4 * self.sigma * kappa_x * kappa_y / (self.p**2)
         ) * np.sqrt(2 * self.t * np.log(2 * self.M * self.N * self.t**2 / self.delta))
 
         if self.pseudo_action == self.chosen_action:

@@ -3,6 +3,7 @@
 *.pt
 *.txt
 .DS_Store
+playground.py
 
 __pycache__/
 *.pyc
