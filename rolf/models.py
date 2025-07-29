@@ -1030,7 +1030,7 @@ class BiRoLFLasso(ContextualBandit):
         chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
 
         np.random.seed(self.random_state + self.t)
-        
+
         while (pseudo_action_i != chosen_action_i) and (count1 <= max_iter1):
             ## Sample the pseudo action
             pseudo_action_i = np.random.choice(
@@ -1043,20 +1043,20 @@ class BiRoLFLasso(ContextualBandit):
             ).item()
 
             count1 += 1
-        
+
         while (pseudo_action_j != chosen_action_j) and (count2 <= max_iter2):
             ## Sample the pseudo action
             pseudo_action_j = np.random.choice(
                 [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
             ).item()
-            
+
             ## Sample the chosen action
             chosen_action_j = np.random.choice(
                 [i for i in range(self.N)], size=1, replace=False, p=chosen_dist_y
             ).item()
-            
+
             count2 += 1
-        
+
         pseudo_action = pseudo_action_i * self.N + pseudo_action_j
         chosen_action = chosen_action_i * self.N + chosen_action_j
 
@@ -1113,17 +1113,13 @@ class BiRoLFLasso(ContextualBandit):
                 for key in self.matching:
                     matched, data_x, data_y, _, chosen, reward = self.matching[key]
                     if matched:
-                        chosen_i, chosen_j = action_to_ij(chosen,self.N)
+                        chosen_i, chosen_j = action_to_ij(chosen, self.N)
                         new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
-                        new_pseudo_rewards[chosen_i,chosen_j] += (
+                        new_pseudo_rewards[chosen_i, chosen_j] += (
                             (1 / self.p) ** 2
                         ) * (
                             reward
-                            - (
-                                data_x[chosen_i, :]
-                                @ Phi_impute
-                                @ data_y[chosen_j, :]
-                            )
+                            - (data_x[chosen_i, :] @ Phi_impute @ data_y[chosen_j, :])
                         ).T
                         # overwrite the value
                         self.matching[key] = (
@@ -1137,16 +1133,9 @@ class BiRoLFLasso(ContextualBandit):
 
             ## compute the pseudo rewards for the current data
             pseudo_rewards = x @ Phi_impute @ y.T
-            chosen_i, chosen_j = action_to_ij(self.chosen_action,self.N)
-            pseudo_rewards[
-                chosen_i, chosen_j
-            ] += ((1 / self.p) ** 2) * (
-                r
-                - (
-                    x[chosen_i, :]
-                    @ Phi_impute
-                    @ y[chosen_j.T]
-                )
+            chosen_i, chosen_j = action_to_ij(self.chosen_action, self.N)
+            pseudo_rewards[chosen_i, chosen_j] += ((1 / self.p) ** 2) * (
+                r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j.T])
             )
             self.matching[self.t] = (
                 (self.pseudo_action == self.chosen_action),

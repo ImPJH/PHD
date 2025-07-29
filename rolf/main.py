@@ -1,6 +1,3 @@
-## TODO: Change for 2 feature matrix X,Y and U,V
-## Maybe there has 9 different case, combination of X is (default,R(U) ⊆ R(X), R(X) ⊆ R(U)) and Y is (default,R(V) ⊆ R(Y), R(Y) ⊆ R(V))
-
 from cfg import get_cfg
 from models import *
 from util import *
@@ -278,12 +275,29 @@ def bilinear_run_trials(
                 d=total_obs_dim, arms=total_arms, lam1=1.0, lam2=0.5, zT=10, tr=True
             )
 
-        ## TODO: make BiRolf code
         elif agent_type == "birolf_lasso":
             if cfg.explore:
-                agent = BiRoLFLasso()
+                agent = BiRoLFLasso(
+                    M=M,
+                    N=N,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                    delta=cfg.delta,
+                    p=cfg.p,
+                    explore=cfg.explore,
+                    init_explore=exp_map[cfg.init_explore],
+                    theoretical_init_explore=False,
+                )
             else:
-                agent = BiRoLFLasso()
+                agent = BiRoLFLasso(
+                    M=M,
+                    N=N,
+                    sigma=noise_std,
+                    random_state=random_state_,
+                    delta=cfg.delta,
+                    p=cfg.p,
+                    theoretical_init_explore=False,
+                )
 
         ## sample features
         ## X_star: (d_x_star, M)
@@ -431,22 +445,22 @@ def bilinear_run(
             chosen_action = agent.choose(z)
         else:
             chosen_action = agent.choose()
-        chosen_i, chosen_j = action_to_ij(chosen_action,N)
-        chosen_reward = exp_rewards_mat[chosen_i,chosen_j] + noise
+        chosen_i, chosen_j = action_to_ij(chosen_action, N)
+        chosen_reward = exp_rewards_mat[chosen_i, chosen_j] + noise
 
         if verbose:
             try:
                 string = f"""
-                        case : {cfg.case}, SEED : {cfg.seed}, K : {cfg.arms}, 
-                        Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, 
+                        case : {cfg.case}, SEED : {cfg.seed}, M : {cfg.arm_x}, N: {cfg.arm_y},
+                        true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y}, 
                         Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, 
                         Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, 
                         pseudo : {agent.pseudo_action}, chosen (i,j) : {(chosen_i,chosen_j)}
                     """
             except:
                 string = f"""
-                        case : {cfg.case}, SEED : {cfg.seed}, K : {cfg.arms}, 
-                        Latent_dim : {cfg.latent_dim}, Obs_dim : {cfg.dim}, 
+                        case : {cfg.case}, SEED : {cfg.seed}, M : {cfg.arm_x}, N: {cfg.arm_y},
+                        true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y}, 
                         Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, 
                         Round : {t+1}, optimal : {optimal_action}, chosen (i,j): {(chosen_i,chosen_j)}
                     """
@@ -454,11 +468,11 @@ def bilinear_run(
             print(" ".join(string.split()))
 
         ## compute the regret
-        regrets[t] = optimal_reward - exp_rewards_mat[chosen_i,chosen_j]
+        regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
 
         ## update the agent
-        if isinstance(agent,BiRoLFLasso):
-            agent.update(x=x,y=y,r=chosen_reward)
+        if isinstance(agent, BiRoLFLasso):
+            agent.update(x=x, y=y, r=chosen_reward)
         elif isinstance(agent, ContextualBandit):
             agent.update(x=x, r=chosen_reward)
         else:
@@ -466,132 +480,145 @@ def bilinear_run(
 
     return np.cumsum(regrets)
 
+## nothing change compare to show_result()
+def bilinear_show_result(
+    regrets: dict, horizon: int, figsize: tuple = (6, 5), fontsize=11
+):
 
-## TODO: make bottom lines.
+    fig, ax = plt.subplots(figsize=figsize)
 
-# def bilinear_show_result(
-#     regrets: dict, horizon: int, figsize: tuple = (6, 5), fontsize=11
-# ):
+    colors = ["blue", "orange", "green", "red", "purple", "black"]
+    period = horizon // 10
 
-#     fig, ax = plt.subplots(figsize=figsize)
+    z_init = len(colors)
+    # Plot the graph for each algorithm with error bars
+    for i, (color, (key, item)) in enumerate(zip(colors, regrets.items())):
+        rounds = np.arange(horizon)
+        mean = np.mean(item, axis=0)
+        std = np.std(item, axis=0, ddof=1)
 
-#     colors = ["blue", "orange", "green", "red", "purple", "black"]
-#     period = horizon // 10
+        # Display the line with markers and error bars periodically
+        ax.errorbar(
+            rounds[::period],
+            mean[::period],
+            yerr=std[::period],
+            label=f"{key}",
+            fmt="s",
+            color=color,
+            capsize=3,
+            elinewidth=1,
+            zorder=z_init - i,
+        )
 
-#     z_init = len(colors)
-#     # Plot the graph for each algorithm with error bars
-#     for i, (color, (key, item)) in enumerate(zip(colors, regrets.items())):
-#         rounds = np.arange(horizon)
-#         mean = np.mean(item, axis=0)
-#         std = np.std(item, axis=0, ddof=1)
+        # Display the full line without periodic markers
+        ax.plot(rounds, mean, color=color, linewidth=2, zorder=z_init - i)
 
-#         # Display the line with markers and error bars periodically
-#         ax.errorbar(
-#             rounds[::period],
-#             mean[::period],
-#             yerr=std[::period],
-#             label=f"{key}",
-#             fmt="s",
-#             color=color,
-#             capsize=3,
-#             elinewidth=1,
-#             zorder=z_init - i,
-#         )
+    ax.grid(True)
+    ax.set_xlabel(r"Round ($t$)")
+    ax.set_ylabel("Cumulative Regret")
+    ax.legend(loc="upper left", fontsize=fontsize)
 
-#         # Display the full line without periodic markers
-#         ax.plot(rounds, mean, color=color, linewidth=2, zorder=z_init - i)
-
-#     ax.grid(True)
-#     ax.set_xlabel(r"Round ($t$)")
-#     ax.set_ylabel("Cumulative Regret")
-#     ax.legend(loc="upper left", fontsize=fontsize)
-
-#     fig.tight_layout()
-#     return fig
+    fig.tight_layout()
+    return fig
 
 
-# # Function to run trials for a single agent
-# def bilinear_run_agent(agent_type):
-#     regrets = bilinear_run_trials(
-#         agent_type=agent_type,
-#         trials=cfg.trials,
-#         horizon=cfg.horizon,
-#         k=cfg.latent_dim,
-#         d=cfg.dim,
-#         arms=cfg.arms,
-#         noise_std=cfg.reward_std,
-#         case=cfg.case,
-#         random_state=cfg.seed,
-#         verbose=True,
-#         fname=f"Case_{cfg.case}_K_{cfg.arms}_k_{cfg.latent_dim}_d_{cfg.dim}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
-#     )
-#     key = AGENT_DICT[agent_type]
-#     return key, regrets
+# Function to run trials for a single agent
+def bilinear_run_agent(agent_type):
+    regrets = bilinear_run_trials(
+        agent_type=agent_type,
+        trials=cfg.trials,
+        horizon=cfg.horizon,
+        d_x_star=cfg.true_dim_x,
+        d_x=cfg.dim_x,
+        M=cfg.arm_x,
+        d_y_star=cfg.true_dim_y,
+        d_y=cfg.dim_y,
+        N=cfg.arm_y,
+        noise_std= cfg.reward_std,
+        case=cfg.case,
+        random_state=cfg.seed,
+        verbose=True,
+        fname= f"Case_{cfg.case}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
+        )
+    key = AGENT_DICT[agent_type]
+    return key, regrets
 
 
-# if __name__ == "__main__":
-#     ## hyper-parameters
-#     arms = cfg.arms  # List[int]
-#     k = cfg.latent_dim
-#     d = cfg.dim
-#     T = cfg.horizon
-#     SEED = cfg.seed
-#     sigma = cfg.reward_std
-#     AGENTS = ["rolf_lasso", "rolf_ridge", "dr_lasso", "linucb", "lints", "mab_ucb"]
-#     case = cfg.case
-#     fname = f"Case_{case}_K_{arms}_k_{k}_d_{d}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
+if __name__ == "__main__":
+    ## hyper-parameters
+    M = cfg.arm_x
+    N = cfg.arm_y
+    
+    d_x_star = cfg.true_dim_x
+    d_y_star = cfg.true_dim_y
+    
+    d_x = cfg.dim_x
+    d_y = cfg.dim_y
 
-#     # regret_results = dict()
-#     # for agent_type in AGENTS:
-#     #     regrets = run_trials(agent_type=agent_type,
-#     #                          trials=cfg.trials,
-#     #                          horizon=T,
-#     #                          k=k,
-#     #                          d=d,
-#     #                          arms=arms,
-#     #                          noise_std=cfg.reward_std,
-#     #                          random_state=SEED,
-#     #                          verbose=True)
-#     #     key = AGENT_DICT[agent_type]
-#     #     regret_results[key] = regrets
+    T = cfg.horizon
+    SEED = cfg.seed
+    sigma = cfg.reward_std
+    AGENTS = ["birolf_lasso", "rolf_lasso", "rolf_ridge", "dr_lasso", "linucb", "lints", "mab_ucb"]
+    case = cfg.case
 
-#     # # Function to run trials for a single agent
-#     # def run_agent(agent_type):
-#     #     regrets = run_trials(
-#     #         agent_type=agent_type,
-#     #         trials=cfg.trials,
-#     #         horizon=T,
-#     #         k=k,
-#     #         d=d,
-#     #         arms=arms,
-#     #         noise_std=cfg.reward_std,
-#     #         case=case,
-#     #         random_state=SEED,
-#     #         verbose=True,
-#     #         fname=fname
-#     #     )
-#     #     key = AGENT_DICT[agent_type]
-#     #     return key, regrets
+    fname = f"Case_{case}_M_{M}_N_{N}_xstar_{d_x_star}_ystar_{d_y_star}_dx_{d_x}_dy_{d_y}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
 
-#     # Parallel execution using ProcessPoolExecutor
-#     regret_results = dict()
-#     with ProcessPoolExecutor(max_workers=8) as executor:
-#         results = executor.map(run_agent, AGENTS)
+    # regret_results = dict()
+    # for agent_type in AGENTS:
+    #     regrets = run_trials(agent_type=agent_type,
+    #                          trials=cfg.trials,
+    #                          horizon=T,
+    #                          k=k,
+    #                          d=d,
+    #                          arms=arms,
+    #                          noise_std=cfg.reward_std,
+    #                          random_state=SEED,
+    #                          verbose=True)
+    #     key = AGENT_DICT[agent_type]
+    #     regret_results[key] = regrets
 
-#     # Collect results
-#     for key, regrets in results:
-#         regret_results[key] = regrets
+    # # Function to run trials for a single agent
+    # def run_agent(agent_type):
+    #     regrets = run_trials(
+    #         agent_type=agent_type,
+    #         trials=cfg.trials,
+    #         horizon=T,
+    #         k=k,
+    #         d=d,
+    #         arms=arms,
+    #         noise_std=cfg.reward_std,
+    #         case=case,
+    #         random_state=SEED,
+    #         verbose=True,
+    #         fname=fname
+    #     )
+    #     key = AGENT_DICT[agent_type]
+    #     return key, regrets
 
-#     fig = show_result(regrets=regret_results, horizon=T, fontsize=15)
+    # Parallel execution using ProcessPoolExecutor
+    regret_results = dict()
+    with ProcessPoolExecutor(max_workers=8) as executor:
+        results = executor.map(bilinear_run_agent, AGENTS)
 
-#     save_plot(fig, path=FIGURE_PATH, fname=fname)
-#     save_result(
-#         result=(vars(cfg), regret_results),
-#         path=RESULT_PATH,
-#         fname=fname,
-#         filetype=cfg.filetype,
-#     )
+    # Collect results
+    for key, regrets in results:
+        regret_results[key] = regrets
 
+    fig = bilinear_show_result(regrets=regret_results, horizon=T, fontsize=15)
+
+    save_plot(fig, path=FIGURE_PATH, fname=fname)
+    save_result(
+        result=(vars(cfg), regret_results),
+        path=RESULT_PATH,
+        fname=fname,
+        filetype=cfg.filetype,
+    )
+
+#
+###### ! BEFORE CHANGE ! #############
+#
+#
+#
 #
 #
 #
