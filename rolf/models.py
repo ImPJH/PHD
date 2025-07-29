@@ -935,8 +935,36 @@ class LassoBandit(ContextualBandit):
 
 
 class BiRoLFLasso(ContextualBandit):
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        p1: float,
+        p2: float,
+        delta: float,
+        sigma: float,
+        random_state: int,
+        explore: bool = False,
+        init_explore: int = 0,
+    ):
+        self.p1 = p1
+        self.p2 = p2
+        self.delta = delta
+        self.sigma = sigma
+        self.random_state = random_state
+        self.explore = explore
+        self.init_explore = init_explore
+        self.t = 0
+        self.M = 0
+        self.N = 0
+        self.action_history = []
+        self.pseudo_action = 0
+        self.chosen_action = 0
+        self.impute_prev = np.zeros(self.M * self.N)
+        self.main_prev = np.zeros(self.M * self.N)
+        self.matching = {}
+        self.Phi_hat = np.zeros(self.M * self.N)
+        self.Phi_check = np.zeros(self.M * self.N)
+        self.kappa_x = 0
+        self.kappa_y = 0
 
     def choose(self, x: np.ndarray, y: np.ndarray):
         # x : (M, d_x_star) augmented feature matrix where each row denotes the augmented features
@@ -956,7 +984,7 @@ class BiRoLFLasso(ContextualBandit):
             ## decision_rule : (M,N)
             decision_rule = x @ self.Phi_hat @ y.T
             # print(f"Decision rule : {decision_rule}")
-            a_hat = np.argax(decision_rule)
+            a_hat = np.argmax(decision_rule)
 
         i_hat = (int)(a_hat / self.N)
         j_hat = a_hat % self.N
@@ -968,56 +996,67 @@ class BiRoLFLasso(ContextualBandit):
         ## sampling actions
         pseudo_action = -1
         chosen_action = -2
-        count = 0
+        count1 = 0
+        count2 = 0
 
         ## ~! rho_t !~ ##
-        max_iter = int(
-            np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p))
+        max_iter1 = int(
+            np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p1))
+        )
+        max_iter2 = int(
+            np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p2))
         )
 
         ## ~! phi_t !~ ##
-        pseudo_dist_x = np.array([(1 - self.p) / (self.M - 1)] * self.M, dtype=float)
-        pseudo_dist_x[i_hat] = self.p
+        pseudo_dist_x = np.array([(1 - self.p1) / (self.M - 1)] * self.M, dtype=float)
+        pseudo_dist_x[i_hat] = self.p1
 
-        pseudo_dist_y = np.array([(1 - self.p) / (self.N - 1)] * self.N, dtype=float)
-        pseudo_dist_y[j_hat] = self.p
+        pseudo_dist_y = np.array([(1 - self.p2) / (self.N - 1)] * self.N, dtype=float)
+        pseudo_dist_y[j_hat] = self.p2
 
         ## ~! epsilon(sqrt(t))-greedy ~! ##
-        chosen_dist = np.array(
-            [(1 / np.sqrt(self.t)) / (self.M * self.N - 1)] * self.M * self.N,
+        chosen_dist_x = np.array(
+            [(1 / np.sqrt(self.t)) / (self.M - 1)] * self.M,
             dtype=float,
         )
-        chosen_dist[a_hat] = 1 - (1 / np.sqrt(self.t))
+        chosen_dist_x[i_hat] = 1 - (1 / np.sqrt(self.t))
+
+        chosen_dist_y = np.array(
+            [(1 / np.sqrt(self.t)) / (self.N - 1)] * self.N,
+            dtype=float,
+        )
+        chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
 
         np.random.seed(self.random_state + self.t)
-        while (pseudo_action != chosen_action) and (count <= max_iter):
+        
+        while (pseudo_action_i != chosen_action_i) and (count1 <= max_iter1):
             ## Sample the pseudo action
             pseudo_action_i = np.random.choice(
                 [i for i in range(self.M)], size=1, replace=False, p=pseudo_dist_x
             ).item()
-            pseudo_action_j = np.random.choice(
-                [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
-            ).item()
-
-            pseudo_action = pseudo_action_i * self.N + pseudo_action_j
 
             ## Sample the chosen action
             chosen_action_i = np.random.choice(
-                [i for i in range(self.M)], size=1, replace=False, p=pseudo_dist_x
+                [i for i in range(self.M)], size=1, replace=False, p=chosen_dist_x
             ).item()
-            chosen_action_j = np.random.choice(
+
+            count1 += 1
+        
+        while (pseudo_action_j != chosen_action_j) and (count2 <= max_iter2):
+            ## Sample the pseudo action
+            pseudo_action_j = np.random.choice(
                 [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
             ).item()
-
-            chosen_action = chosen_action_i * self.N + chosen_action_j
-            count += 1
-
-            # chosen_action = np.random.choice(
-            #     [i for i in range(self.M * self.N)],
-            #     size=1,
-            #     replace=False,
-            #     p=chosen_dist,         
-            # ).item()
+            
+            ## Sample the chosen action
+            chosen_action_j = np.random.choice(
+                [i for i in range(self.N)], size=1, replace=False, p=chosen_dist_y
+            ).item()
+            
+            count2 += 1
+        
+        pseudo_action = pseudo_action_i * self.N + pseudo_action_j
+        chosen_action = chosen_action_i * self.N + chosen_action_j
 
         self.action_history.append(chosen_action)  # add to the history
         self.pseudo_action = pseudo_action
