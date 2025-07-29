@@ -53,7 +53,7 @@ def bilinear_feature_generator(
     d_u = d_x_star - d_x  # dimension of unobserved feature(x)
     d_v = d_y_star - d_y  # dimension of unobserved feature(y)
 
-    assert case in [1, 2, 3, 4, 5, 6, 7, 8, 9], "There exists only Case 1, 2, and 3."
+    assert case in [1, 2, 3, 4, 5, 6, 7, 8, 9], "There exists only Case 1 to 9."
 
     ## For feature x
     if case in [1, 2, 3]:
@@ -120,7 +120,7 @@ def bilinear_feature_generator(
         Y_star = np.random.multivariate_normal(
             mean=np.zeros(d_y_star), cov=np.eye(d_y_star), size=N
         ).T  # (d_y_star, N)
-        Y = Y_star[:d_x, :]  # (d_y, N)
+        Y = Y_star[:d_y, :]  # (d_y, N)
 
     # For two matrices A and B,
     # if each row of A can be expressed as a linear combination of the rows of B,
@@ -332,7 +332,7 @@ def bilinear_run_trials(
         )
 
         ## (M,N) matrix with the maximum absolute value does not exceed 1
-        exp_rewards_mat = X.T @ reward_param_mat @ Y
+        exp_rewards_mat = X_star.T @ reward_param_mat @ Y_star
         exp_rewards_mat = exp_rewards_mat / np.max(np.abs(exp_rewards_mat))
 
         if (
