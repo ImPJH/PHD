@@ -931,8 +931,10 @@ class LassoBandit(ContextualBandit):
         l1norm = np.sum(np.abs(beta))
         return loss + (lam * l1norm)
 
+
 class BiRoLFLasso(ContextualBandit):
-    def __init__(self,
+    def __init__(
+        self,
         M: int,
         N: int,
         sigma: float,
@@ -941,10 +943,16 @@ class BiRoLFLasso(ContextualBandit):
         p: float,
         explore: bool = False,
         init_explore: int = 0,
-                 ):
+        theoretical_init_explore: bool = False,
+    ):
         self.t = 0
         self.explore = explore
-        self.init_explore = init_explore
+        ## TODO: make theoretical C_e
+        if theoretical_init_explore:
+            # self.init_explore = ((8*M*N)**3)
+            pass
+        else:
+            self.init_explore = init_explore
         self.M = M
         self.N = N
         self.delta = delta
@@ -955,13 +963,11 @@ class BiRoLFLasso(ContextualBandit):
         self.action_history = []
         self.reward_history = []
 
-        self.matching = (
-            dict()
-        )
-        self.Phi_hat = np.zeros((self.M,self.N))
-        self.Phi_check = np.zeros((self.M,self.N))
-        self.impute_prev = np.zeros((self.M,self.N))
-        self.main_prev = np.zeros((self.M,self.N))
+        self.matching = dict()
+        self.Phi_hat = np.zeros((self.M, self.N))
+        self.Phi_check = np.zeros((self.M, self.N))
+        self.impute_prev = np.zeros((self.M, self.N))
+        self.main_prev = np.zeros((self.M, self.N))
 
     def choose(self, x: np.ndarray, y: np.ndarray):
         # x : (M, M) augmented feature matrix where each row denotes the augmented features
@@ -983,8 +989,7 @@ class BiRoLFLasso(ContextualBandit):
             # print(f"Decision rule : {decision_rule}")
             a_hat = np.argax(decision_rule)
 
-        i_hat = (int)(a_hat / self.N)
-        j_hat = a_hat % self.N
+        i_hat, j_hat = action_to_ij(a_hat, self.N)
 
         self.a_hat = a_hat
         self.i_hat = i_hat
@@ -1041,7 +1046,7 @@ class BiRoLFLasso(ContextualBandit):
             #     [i for i in range(self.M * self.N)],
             #     size=1,
             #     replace=False,
-            #     p=chosen_dist,         
+            #     p=chosen_dist,
             # ).item()
 
         self.action_history.append(chosen_action)  # add to the history
@@ -1064,8 +1069,8 @@ class BiRoLFLasso(ContextualBandit):
         # lam_impute = self.p
         # lam_main = self.p
 
-        kappa_x = np.power(np.sum(np.power(np.max(np.abs(x), axis=1), 4)),0.25)
-        kappa_y = np.power(np.sum(np.power(np.max(np.abs(y), axis=1), 4)),0.25)
+        kappa_x = np.power(np.sum(np.power(np.max(np.abs(x), axis=1), 4)), 0.25)
+        kappa_y = np.power(np.sum(np.power(np.max(np.abs(y), axis=1), 4)), 0.25)
 
         lam_impute = (
             2
@@ -1074,9 +1079,9 @@ class BiRoLFLasso(ContextualBandit):
             * kappa_y
             * np.sqrt(2 * self.t * np.log(2 * self.M * self.N / self.delta))
         )
-        lam_main = (
-            4 * self.sigma * kappa_x * kappa_y / (self.p**2)
-        ) * np.sqrt(2 * self.t * np.log(2 * self.M * self.N * self.t**2 / self.delta))
+        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p**2)) * np.sqrt(
+            2 * self.t * np.log(2 * self.M * self.N * self.t**2 / self.delta)
+        )
 
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator
@@ -1097,15 +1102,16 @@ class BiRoLFLasso(ContextualBandit):
                 for key in self.matching:
                     matched, data_x, data_y, _, chosen, reward = self.matching[key]
                     if matched:
+                        chosen_i, chosen_j = action_to_ij(chosen,self.N)
                         new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
-                        new_pseudo_rewards[(int)(chosen / self.N), chosen % self.N] += (
+                        new_pseudo_rewards[chosen_i,chosen_j] += (
                             (1 / self.p) ** 2
                         ) * (
                             reward
                             - (
-                                data_x[(int)(chosen / self.N), :]
+                                data_x[chosen_i, :]
                                 @ Phi_impute
-                                @ data_y[chosen % self.N, :]
+                                @ data_y[chosen_j, :]
                             )
                         ).T
                         # overwrite the value
@@ -1120,14 +1126,15 @@ class BiRoLFLasso(ContextualBandit):
 
             ## compute the pseudo rewards for the current data
             pseudo_rewards = x @ Phi_impute @ y.T
+            chosen_i, chosen_j = action_to_ij(self.chosen_action,self.N)
             pseudo_rewards[
-                (int)(self.chosen_action / self.N), self.chosen_action % self.N
+                chosen_i, chosen_j
             ] += ((1 / self.p) ** 2) * (
                 r
                 - (
-                    x[(int)(self.chosen_action / self.N), :]
+                    x[chosen_i, :]
                     @ Phi_impute
-                    @ y[(int)(self.chosen_action % self.N).T]
+                    @ y[chosen_j.T]
                 )
             )
             self.matching[self.t] = (
@@ -1193,7 +1200,7 @@ class BiRoLFLasso(ContextualBandit):
         X_list = [
             matching_history[key][1] for key in matched_keys
         ]  # List of X matrices
-        
+
         Y_list = [
             matching_history[key][2] for key in matched_keys
         ]  # List of Y matrices
@@ -1219,4 +1226,3 @@ class BiRoLFLasso(ContextualBandit):
 
     def __get_param(self):
         return {"param": self.Phi_hat, "impute": self.Phi_check}
-    

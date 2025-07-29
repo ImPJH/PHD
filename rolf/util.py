@@ -10,14 +10,19 @@ from tqdm.auto import tqdm
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor
 
-def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
+
+def generate_uniform(dim: Union[int, tuple], uniform_rng: list = None):
     ## Generates a given dimension of random vector that where each element follows the uniform distribution in a given range
-    assert type(dim) == int or type(dim) == tuple, "The type of 'dim' must be either int or tuple."
+    assert (
+        type(dim) == int or type(dim) == tuple
+    ), "The type of 'dim' must be either int or tuple."
 
     if uniform_rng is None:
-        low, high = -1., 1.
+        low, high = -1.0, 1.0
     else:
-        assert len(uniform_rng) == 2, "The 'uniform_rng' must contain two elements: low and high."
+        assert (
+            len(uniform_rng) == 2
+        ), "The 'uniform_rng' must contain two elements: low and high."
         low, high = uniform_rng
 
     if type(dim) == int:
@@ -28,38 +33,52 @@ def generate_uniform(dim:Union[int, tuple], uniform_rng:list=None):
     return np.random.uniform(low=low, high=high, size=size).reshape(dim)
 
 
-def shermanMorrison(V:np.ndarray, x:np.ndarray):
+def shermanMorrison(V: np.ndarray, x: np.ndarray):
     """
     V: inverse of old gram matrix, corresponding to $V_{t-1}$.
     x: a new observed context
     return: inverse of new gram matrix
     """
     numerator = np.einsum("ij, j, k, kl -> il", V, x, x, V)
-    denominator = (1 + np.einsum("i, ij, j ->", x, V, x))
+    denominator = 1 + np.einsum("i, ij, j ->", x, V, x)
     return V - (numerator / denominator)
 
 
-def vector_norm(v:np.ndarray, type:str):
-    assert type in ["l1", "l2", "lsup"], "Type of the vector norm should be one of 'l1', 'l2', and 'lsup'."
+def vector_norm(v: np.ndarray, type: str):
+    assert type in [
+        "l1",
+        "l2",
+        "lsup",
+    ], "Type of the vector norm should be one of 'l1', 'l2', and 'lsup'."
     type_dict = {"l1": 1, "l2": 2, "lsup": np.inf}
     v = v.flatten()
     return np.linalg.norm(v, ord=type_dict[type])
 
-def matrix_norm(M:np.ndarray, type:str):
+
+def matrix_norm(M: np.ndarray, type: str):
     types = ["l1l1", "fro"]
     assert type in types, f"Type of the vector norm should be one of {types}."
-    
+
     if type == "l1l1":
         return np.sum(np.abs(M))
     elif type == "fro":
-        return np.linalg.norm(M,"fro")
+        return np.linalg.norm(M, "fro")
 
 
-def covariance_generator(d:int, independent:bool, distribution:str=None, uniform_rng:list=None, variances:Union[list, np.ndarray]=None):
+def covariance_generator(
+    d: int,
+    independent: bool,
+    distribution: str = None,
+    uniform_rng: list = None,
+    variances: Union[list, np.ndarray] = None,
+):
     ## Generates a random covariance matrix
     if independent:
         if variances is None:
-            assert distribution is not None and distribution.lower() in ["gaussian", "uniform"], "If the variances are not given, you need to pass the distribution to sample them."
+            assert distribution is not None and distribution.lower() in [
+                "gaussian",
+                "uniform",
+            ], "If the variances are not given, you need to pass the distribution to sample them."
             ## then variances are sampled randomly
             if distribution == "gaussian":
                 variances = (np.random.randn(d)) ** 2
@@ -71,7 +90,10 @@ def covariance_generator(d:int, independent:bool, distribution:str=None, uniform
             mat[i, i] = variances[i]
 
     else:
-        assert distribution is not None and distribution.lower() in ["gaussian", "uniform"], f"If independent is {independent}, you need to pass the distribution to sample them."
+        assert distribution is not None and distribution.lower() in [
+            "gaussian",
+            "uniform",
+        ], f"If independent is {independent}, you need to pass the distribution to sample them."
         if distribution == "gaussian":
             rnd = np.random.randn(d, d)
         elif distribution == "uniform":
@@ -92,16 +114,16 @@ def gram_schmidt(A):
     Q = np.zeros(A.shape)
     for i in range(A.shape[1]):
         # Orthogonalize the vector
-        Q[:,i] = A[:,i]
+        Q[:, i] = A[:, i]
         for j in range(i):
-            Q[:,i] -= np.dot(Q[:,j], A[:,i]) * Q[:,j]
+            Q[:, i] -= np.dot(Q[:, j], A[:, i]) * Q[:, j]
 
         # Normalize the vector
-        Q[:,i] = Q[:,i] / np.linalg.norm(Q[:,i])
+        Q[:, i] = Q[:, i] / np.linalg.norm(Q[:, i])
     return Q
 
 
-def make_diagonal(v:np.ndarray, dim:Union[int, tuple]):
+def make_diagonal(v: np.ndarray, dim: Union[int, tuple]):
     ## Generate a diagonal matrix
     if type(dim) == int:
         diag = np.zeros((dim, dim))
@@ -115,7 +137,9 @@ def make_diagonal(v:np.ndarray, dim:Union[int, tuple]):
     return diag
 
 
-def positive_definite_generator(dimension:int, distribution:str="uniform", uniform_rng:list=None):
+def positive_definite_generator(
+    dimension: int, distribution: str = "uniform", uniform_rng: list = None
+):
     d = dimension
 
     ## create orthogonal eigenvectors via Gram-Schmidt process
@@ -134,14 +158,14 @@ def positive_definite_generator(dimension:int, distribution:str="uniform", unifo
     return Z
 
 
-def minmax(v:np.ndarray, bound:float=1.):
+def minmax(v: np.ndarray, bound: float = 1.0):
     # minmax scaler
     min = np.min(v)
     max = np.max(v)
     return ((v - min) / (max - min)) * bound
 
 
-def left_pseudo_inverse(A:np.ndarray):
+def left_pseudo_inverse(A: np.ndarray):
     ## Perform SVD to obtain the left pseudo inverse
     d, k = A.shape
     u, A_sig, v_T = np.linalg.svd(A)
@@ -153,30 +177,32 @@ def left_pseudo_inverse(A:np.ndarray):
     return B
 
 
-def rademacher(size:int):
+def rademacher(size: int):
     ## generate a Rademacher random variable
     return 2 * np.random.randint(0, 2, size) - 1
 
 
-def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:int=None):
+def subgaussian_noise(
+    distribution: str, size: int, std: float = None, random_state: int = None
+):
     ## SubGaussian noise generator
     if random_state:
         np.random.seed(random_state)
 
     if distribution == "gaussian":
         if std is None:
-            std = 1.
+            std = 1.0
         noise = np.random.normal(loc=0, scale=std, size=size)
     elif distribution == "uniform":
         if std is None:
-            uniform_rng = [-1., 1.]
+            uniform_rng = [-1.0, 1.0]
         else:
             low = -np.sqrt(3) * std
             high = np.sqrt(3) * std
             uniform_rng = [low, high]
         noise = generate_uniform(dim=size, uniform_rng=uniform_rng)
     else:
-        std = 1.
+        std = 1.0
         noise = rademacher(size=size)
 
     if size == 1:
@@ -186,24 +212,41 @@ def subgaussian_noise(distribution:str, size:int, std:float=None, random_state:i
     return noise
 
 
-def bounding(type:str, v:np.ndarray, bound:float, method:str=None, norm_type:str=None):
+def bounding(
+    type: str, v: np.ndarray, bound: float, method: str = None, norm_type: str = None
+):
     ## Function to bound a vector or a matrix
     type_dict = {"l1": 1, "l2": 2, "lsup": np.inf}
+
     if type == "param":
-        assert norm_type is not None, "For a vector, you should input which type of norm you are going to use."
+        assert (
+            norm_type is not None
+        ), "For a vector, you should input which type of norm you are going to use."
+
         if vector_norm(v, type=norm_type) > bound:
-            v *= (bound / vector_norm(v, norm_type))
+            v *= bound / vector_norm(v, norm_type)
+
     elif type == "feature":
-        assert method in ["scaling", "clipping"], f"If you're trying to bound {type}, the method should not be None."
+        assert method in [
+            "scaling",
+            "clipping",
+        ], f"If you're trying to bound {type}, the method should not be None."
+
         if method == "scaling":
             maxnorm = np.max([vector_norm(item, type=norm_type) for item in v])
-            v *= (bound / maxnorm)
+            v *= bound / maxnorm
+
         else:
             norms = np.linalg.norm(v, axis=1, ord=type_dict[norm_type])
             scale_factors = np.where(norms > bound, bound / norms, 1)
             v = v * scale_factors[:, np.newaxis]  # Scale each row without loop
+
     elif type == "mapping":
-        assert method in ["lower", "upper"], f"If you're trying to bound {type}, you need to specify the lower or the upper bound."
+        assert method in [
+            "lower",
+            "upper",
+        ], f"If you're trying to bound {type}, you need to specify the lower or the upper bound."
+
         if method == "lower":
             ## constrain the lower bound of the minimum singular value
             u, sig, v_T = np.linalg.svd(v)
@@ -213,33 +256,107 @@ def bounding(type:str, v:np.ndarray, bound:float, method:str=None, norm_type:str
 
         if method == "upper":
             ## constrain the upper bound of the spectral norm
-            v *= (bound / np.linalg.norm(v, 2))
+            v *= bound / np.linalg.norm(v, 2)
     return v
 
 
-def sample_matrix(dimension:int, distribution:str, size:int, disjoint:bool, cov_dist:str=None, bound:float=None,
-                    bound_method:str=None, bound_type:str=None, uniform_rng:list=None, random_state:int=None):
+## TODO: make matrix bounding function
+# def matrix_bounding(
+#     type: str, M: np.ndarray, bound: float, method: str = None, norm_type: str = None
+# ):
+#     ## Function to bound a vector or a matrix
+#     type_dict = {"l1": 1, "l2": 2, "lsup": np.inf}
+
+#     if type == "param":
+#         assert (
+#             norm_type is not None
+#         ), "For a vector, you should input which type of norm you are going to use."
+
+#         if vector_norm(v, type=norm_type) > bound:
+#             v *= bound / vector_norm(v, norm_type)
+
+#     elif type == "feature":
+#         assert method in [
+#             "scaling",
+#             "clipping",
+#         ], f"If you're trying to bound {type}, the method should not be None."
+
+#         if method == "scaling":
+#             maxnorm = np.max([vector_norm(item, type=norm_type) for item in v])
+#             v *= bound / maxnorm
+
+#         else:
+#             norms = np.linalg.norm(v, axis=1, ord=type_dict[norm_type])
+#             scale_factors = np.where(norms > bound, bound / norms, 1)
+#             v = v * scale_factors[:, np.newaxis]  # Scale each row without loop
+
+#     elif type == "mapping":
+#         assert method in [
+#             "lower",
+#             "upper",
+#         ], f"If you're trying to bound {type}, you need to specify the lower or the upper bound."
+
+#         if method == "lower":
+#             ## constrain the lower bound of the minimum singular value
+#             u, sig, v_T = np.linalg.svd(v)
+#             sig = sig - np.min(sig) + bound
+#             sig_v = make_diagonal(sig, dim=v.shape)
+#             v = u @ sig_v @ v_T
+
+#         if method == "upper":
+#             ## constrain the upper bound of the spectral norm
+#             v *= bound / np.linalg.norm(v, 2)
+#     return v
+
+
+def sample_matrix(
+    dimension: int,
+    distribution: str,
+    size: int,
+    disjoint: bool,
+    cov_dist: str = None,
+    bound: float = None,
+    bound_method: str = None,
+    bound_type: str = None,
+    uniform_rng: list = None,
+    random_state: int = None,
+):
     ## Function to sample a feature matrix
-    assert distribution.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
+    assert distribution.lower() in [
+        "gaussian",
+        "uniform",
+    ], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
 
     if disjoint:
         if distribution.lower() == "gaussian":
-            assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
+            assert (
+                uniform_rng is None
+            ), f"If the distribution is {distribution}, variable range is not required."
             ## gaussian
             variances = np.ones(dimension)
-            cov = covariance_generator(d=dimension, independent=True, variances=variances)
-            feat = np.random.multivariate_normal(mean=np.zeros(dimension), cov=cov, size=size)
+            cov = covariance_generator(
+                d=dimension, independent=True, variances=variances
+            )
+            feat = np.random.multivariate_normal(
+                mean=np.zeros(dimension), cov=cov, size=size
+            )
         else:
             ## uniform
             feat = generate_uniform(dim=(size, dimension), uniform_rng=uniform_rng)
     else:
-        assert cov_dist is not None, f"If 'disjoint' is set to {disjoint}, it is required to specify the distribution to sample the covariance matrix."
+        assert (
+            cov_dist is not None
+        ), f"If 'disjoint' is set to {disjoint}, it is required to specify the distribution to sample the covariance matrix."
         if distribution.lower() == "gaussian":
             ## gaussian
-            cov = covariance_generator(d=dimension, independent=False, distribution=cov_dist)
-            feat = np.random.multivariate_normal(mean=np.zeros(dimension), cov=cov, size=size)
+            cov = covariance_generator(
+                d=dimension, independent=False, distribution=cov_dist
+            )
+            feat = np.random.multivariate_normal(
+                mean=np.zeros(dimension), cov=cov, size=size
+            )
         else:
             ## uniform
             feat = generate_uniform(dim=(size, dimension), uniform_rng=uniform_rng)
@@ -255,24 +372,53 @@ def sample_matrix(dimension:int, distribution:str, size:int, disjoint:bool, cov_
         feat += np.random.normal(0, 1e-4, size=feat.shape)
 
     if bound is not None:
-        assert bound_method in ["scaling", "clipping"], "Bounding method should either be 'scaling' or 'clipping'."
-        assert bound_type in ["l1", "l2", "lsup"], "Bounding type must be one of 'l1', 'l2', 'lsup'."
-        feat = bounding(type="feature", v=feat, bound=bound, method=bound_method, norm_type=bound_type)
+        assert bound_method in [
+            "scaling",
+            "clipping",
+        ], "Bounding method should either be 'scaling' or 'clipping'."
+        assert bound_type in [
+            "l1",
+            "l2",
+            "lsup",
+        ], "Bounding type must be one of 'l1', 'l2', 'lsup'."
+        feat = bounding(
+            type="feature",
+            v=feat,
+            bound=bound,
+            method=bound_method,
+            norm_type=bound_type,
+        )
     return feat
 
 
-def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound:float=None, upper_bound:float=None, uniform_rng:list=None, random_state:int=None):
+def mapping_generator(
+    latent_dim: int,
+    obs_dim: int,
+    distribution: str,
+    lower_bound: float = None,
+    upper_bound: float = None,
+    uniform_rng: list = None,
+    random_state: int = None,
+):
     ## Function that generates a linear mapping
-    assert distribution.lower() in ["gaussian", "uniform"], "Feature distribution must be either 'gaussian' or 'uniform'."
+    assert distribution.lower() in [
+        "gaussian",
+        "uniform",
+    ], "Feature distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
 
     if distribution.lower() == "gaussian":
-        assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
+        assert (
+            uniform_rng is None
+        ), f"If the distribution is {distribution}, variable range is not required."
         mat = np.random.randn(obs_dim, latent_dim)
     else:
         if uniform_rng is None:
-            mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=[-np.sqrt(2/latent_dim), np.sqrt(2/latent_dim)])
+            mat = generate_uniform(
+                dim=(obs_dim, latent_dim),
+                uniform_rng=[-np.sqrt(2 / latent_dim), np.sqrt(2 / latent_dim)],
+            )
         else:
             mat = generate_uniform(dim=(obs_dim, latent_dim), uniform_rng=uniform_rng)
 
@@ -286,15 +432,28 @@ def mapping_generator(latent_dim:int, obs_dim:int, distribution:str, lower_bound
     return mat
 
 
-def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=None, bound_type:str=None, uniform_rng:list=None, random_state:int=None):
+def param_generator(
+    dimension: int,
+    distribution: str,
+    disjoint: bool,
+    bound: float = None,
+    bound_type: str = None,
+    uniform_rng: list = None,
+    random_state: int = None,
+):
     ## Function that generates an unknown parameter
-    assert distribution.lower() in ["gaussian", "uniform"], "Parameter distribution must be either 'gaussian' or 'uniform'."
+    assert distribution.lower() in [
+        "gaussian",
+        "uniform",
+    ], "Parameter distribution must be either 'gaussian' or 'uniform'."
     if random_state:
         np.random.seed(random_state)
 
     if disjoint:
         if distribution == "gaussian":
-            assert uniform_rng is None, f"If the distribution is {distribution}, variable range is not required."
+            assert (
+                uniform_rng is None
+            ), f"If the distribution is {distribution}, variable range is not required."
             param = np.random.randn(dimension)
         else:
             param = generate_uniform(dim=dimension, uniform_rng=uniform_rng)
@@ -310,18 +469,76 @@ def param_generator(dimension:int, distribution:str, disjoint:bool, bound:float=
             param = L @ param
 
     if bound is not None:
-        assert bound_type in ["l1", "l2", "lsup"], "Bounding type must be one of 'l1', 'l2', 'lsup'."
+        assert bound_type in [
+            "l1",
+            "l2",
+            "lsup",
+        ], "Bounding type must be one of 'l1', 'l2', 'lsup'."
         param = bounding(type="param", v=param, bound=bound, norm_type=bound_type)
     return param
 
 
-def save_plot(fig:Figure, path:str, fname:str, extension:str="pdf"):
+def bilinear_param_generator(
+    dimension_x: int,
+    dimension_y: int,
+    distribution: str,
+    disjoint: bool = True,
+    bound: float = None,
+    bound_type: str = None,
+    uniform_rng: list = None,
+    random_state: int = None,
+):
+    ## Function that generates an unknown parameter
+    assert distribution.lower() in [
+        "gaussian",
+        "uniform",
+    ], "Parameter distribution must be either 'gaussian' or 'uniform'."
+    if random_state:
+        np.random.seed(random_state)
+
+    if disjoint:
+        if distribution == "gaussian":
+            assert (
+                uniform_rng is None
+            ), f"If the distribution is {distribution}, variable range is not required."
+            param = np.random.randn(dimension_x, dimension_y)
+        else:
+            param = generate_uniform(
+                dim=(dimension_x, dimension_y), uniform_rng=uniform_rng
+            )
+    ## TODO: make non-disjoint situation
+    else:
+        pass
+        # if distribution == "gaussian":
+        #     cov = covariance_generator(dimension, distribution=distribution)
+        #     param = np.random.multivariate_normal(mean=np.zeros(dimension), cov=cov)
+        # else:
+        #     # uniform
+        #     param = generate_uniform(dim=dimension, uniform_rng=uniform_rng)
+        #     pd = positive_definite_generator(dimension, distribution=distribution)
+        #     L = np.linalg.cholesky(pd)
+        #     param = L @ param
+
+    ## TODO: make bounding for parameter matrix Phi
+    ## This is bounding for the linear one.
+    # if bound is not None:
+    #     assert bound_type in [
+    #         "l1",
+    #         "l2",
+    #         "lsup",
+    #     ], "Bounding type must be one of 'l1', 'l2', 'lsup'."
+    #     param = bounding(type="param", v=param, bound=bound, norm_type=bound_type)
+
+    return param
+
+
+def save_plot(fig: Figure, path: str, fname: str, extension: str = "pdf"):
     os.makedirs(path, exist_ok=True)
     fig.savefig(f"{path}/{fname}.{extension}")
     print("Plot is Saved Completely!")
 
 
-def save_result(result:dict, path:str, fname:str, filetype:str):
+def save_result(result: dict, path: str, fname: str, filetype: str):
     assert filetype in ["pickle", "json"]
     os.makedirs(path, exist_ok=True)
 
@@ -335,7 +552,7 @@ def save_result(result:dict, path:str, fname:str, filetype:str):
     print("Result is Saved Completely!")
 
 
-def save_log(path:str, fname:str, string:str):
+def save_log(path: str, fname: str, string: str):
     os.makedirs(path, exist_ok=True)
     with open(f"{path}/{fname}.log", "a") as f:
         f.write(f"{string}\n")
@@ -361,7 +578,15 @@ def orthogonal_complement_basis(X):
     return null_space_basis
 
 
-def matrix_sqrt(A:np.ndarray):
+def matrix_sqrt(A: np.ndarray):
     U, S, _ = np.linalg.svd(A)
     sqrt_S = np.diag(np.sqrt(S))
     return U @ sqrt_S @ U.T
+
+
+def action_to_ij(a: int, N: int):
+    return ((int)(a / N), a % N)
+
+
+def ij_to_action(i: int, j: int, N: int):
+    return i * N + j
