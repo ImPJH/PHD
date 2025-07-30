@@ -10,10 +10,9 @@ AGENT_DICT = {
     "mab_ucb": r"UCB($\delta$)",
     "linucb": "LinUCB",
     "lints": "LinTS",
-    "rolf_lasso": "RoLF-Lasso",
-    "rolf_ridge": "RoLF-Ridge",
+    "rolf_lasso": "RoLF-Lasso (Ours)",
+    "rolf_ridge": "RoLF-Ridge (Ours)",
     "dr_lasso": "DRLasso",
-    "birolf_lasso": "BiRoLF-Lasso (Ours)",
 }
 
 cfg = get_cfg()
@@ -440,7 +439,7 @@ def bilinear_run(
             distribution=noise_dist, size=1, std=noise_std, random_state=random_state_
         )
 
-        if isinstance(agent, (BiRoLFLasso, RoLFLasso, RoLFRidge)):
+        if isinstance(agent, BiRoLFLasso):
             chosen_action = agent.choose(x, y)
         elif isinstance(agent, ContextualBandit):
             chosen_action = agent.choose(z)
@@ -474,10 +473,8 @@ def bilinear_run(
         ## update the agent
         if isinstance(agent, BiRoLFLasso):
             agent.update(x=x, y=y, r=chosen_reward)
-        elif isinstance(agent, (RoLFLasso, RoLFRidge)):
-            agent.update(x=x, r=chosen_reward)
         elif isinstance(agent, ContextualBandit):
-            agent.update(x=z, r=chosen_reward)
+            agent.update(x=x, r=chosen_reward)
         else:
             agent.update(a=chosen_action, r=chosen_reward)
 
