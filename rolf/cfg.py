@@ -8,7 +8,7 @@ def get_cfg():
     parser.add_argument("--explore", action="store_true")
     parser.add_argument("--init_explore", type=str, choices=["quad", "triple", "sqr", "K", "double"], default=None)
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--trials", type=int, default=5)
+    parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--case", type=int)
 
     ## For Linear model only

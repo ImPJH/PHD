@@ -5,7 +5,7 @@ from calculate_alpha import *
 import scipy
 from sklearn.linear_model import Lasso, LinearRegression
 import statsmodels.api as sm
-from typing import Callable
+from typing import Callable, Optional
 
 
 #############################################################################
@@ -363,10 +363,10 @@ class RoLFLasso(ContextualBandit):
         self.t = 0
         self.d = d
         self.K = arms
-        self.mu_hat = np.zeros(self.K)  # main estimator
-        self.mu_check = np.zeros(self.K)  # imputation estimator
-        self.impute_prev = np.zeros(self.K)
-        self.main_prev = np.zeros(self.K)
+        self.mu_hat = np.zeros(self.d)  # main estimator - should match feature dimension
+        self.mu_check = np.zeros(self.d)  # imputation estimator
+        self.impute_prev = np.zeros(self.d)
+        self.main_prev = np.zeros(self.d)
         self.sigma = sigma  # variance of noise
         self.p = p  # hyperparameter for action sampling
         self.delta = delta  # confidence parameter
@@ -379,9 +379,16 @@ class RoLFLasso(ContextualBandit):
         self.explore = explore
         self.init_explore = init_explore
 
-    def choose(self, x: np.ndarray):
+    def choose(self, x: np.ndarray, y: Optional[np.ndarray] = None):
         # x : (K, d) augmented feature matrix where each row denotes the augmented features
         self.t += 1
+        
+        # Ensure estimator arrays match the actual feature dimension on first call
+        if self.t == 1 and len(self.mu_hat) != x.shape[1]:
+            self.mu_hat = np.zeros(x.shape[1])
+            self.mu_check = np.zeros(x.shape[1])
+            self.impute_prev = np.zeros(x.shape[1])
+            self.main_prev = np.zeros(x.shape[1])
 
         ## compute the \hat{a}_t
         if self.explore:
@@ -448,22 +455,50 @@ class RoLFLasso(ContextualBandit):
         lam_main = self.p
 
         # print(f"x : {x.shape}")
-        gram = x.T @ x
-        gram_sqrt = matrix_sqrt(gram)
+        # gram = x.T @ x
+        # gram_sqrt = matrix_sqrt(gram)
 
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator
-            data_impute = x[self.action_history, :]  # (t, d) matrix
+            # Check if we're in a bilinear setting by comparing max action with data dimensions
+            max_action_in_history = max(self.action_history) if self.action_history else 0
+            
+            if max_action_in_history >= x.shape[0]:
+                # We're in bilinear mode - need to convert global actions to row indices
+                # Infer N from the relationship: max_action = M*N - 1, where M = x.shape[0]
+                M = x.shape[0]
+                # Estimate N based on the maximum action seen
+                estimated_total_actions = max_action_in_history + 1
+                N = estimated_total_actions // M
+                if N * M < estimated_total_actions:
+                    N += 1
+                
+                i_history = [action // N for action in self.action_history]
+                data_impute = x[i_history, :]  # (t, d) matrix
+            else:
+                # Regular case where actions directly correspond to rows
+                data_impute = x[self.action_history, :]  # (t, d) matrix
+            
             target_impute = np.array(self.reward_history)
             # print(f"gram_sqrt : {gram_sqrt.shape}")
             # print(f"impute_prev : {self.impute_prev.shape}")
             mu_impute = scipy.optimize.minimize(
                 self.__imputation_loss,
-                (gram_sqrt @ self.impute_prev),
+                self.impute_prev,
                 args=(data_impute, target_impute, lam_impute),
                 method="SLSQP",
                 options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
             ).x
+            
+            # Ensure mu_impute has the correct dimension to match x.shape[1]
+            if len(mu_impute) != x.shape[1]:
+                # If dimensions don't match, resize mu_impute to match x.shape[1]
+                if len(mu_impute) < x.shape[1]:
+                    # Pad with zeros if too small
+                    mu_impute = np.pad(mu_impute, (0, x.shape[1] - len(mu_impute)))
+                else:
+                    # Truncate if too large
+                    mu_impute = mu_impute[:x.shape[1]]
 
             ## compute and update the pseudo rewards
             if self.matching:
@@ -471,9 +506,23 @@ class RoLFLasso(ContextualBandit):
                     matched, data, _, chosen, reward = self.matching[key]
                     if matched:
                         new_pseudo_rewards = data @ mu_impute
-                        new_pseudo_rewards[chosen] += (1 / self.p) * (
-                            reward - (data[chosen, :] @ mu_impute)
-                        )
+                        
+                        # Check if we're in bilinear mode for the stored action
+                        if chosen >= data.shape[0]:
+                            # Convert global action to row index
+                            M = data.shape[0]
+                            estimated_total_actions = chosen + 1
+                            N = estimated_total_actions // M
+                            if N * M < estimated_total_actions:
+                                N += 1
+                            chosen_i = chosen // N
+                            new_pseudo_rewards[chosen_i] += (1 / self.p) * (
+                                reward - (data[chosen_i, :] @ mu_impute)
+                            )
+                        else:
+                            new_pseudo_rewards[chosen] += (1 / self.p) * (
+                                reward - (data[chosen, :] @ mu_impute)
+                            )
                         # overwrite the value
                         self.matching[key] = (
                             matched,
@@ -485,9 +534,23 @@ class RoLFLasso(ContextualBandit):
 
             ## compute the pseudo rewards for the current data
             pseudo_rewards = x @ mu_impute
-            pseudo_rewards[self.chosen_action] += (1 / self.p) * (
-                r - (x[self.chosen_action, :] @ mu_impute)
-            )
+            
+            # Check if we're in bilinear mode for the current chosen action
+            if self.chosen_action >= x.shape[0]:
+                # Convert global action to row index
+                M = x.shape[0]
+                estimated_total_actions = self.chosen_action + 1
+                N = estimated_total_actions // M
+                if N * M < estimated_total_actions:
+                    N += 1
+                chosen_i = self.chosen_action // N
+                pseudo_rewards[chosen_i] += (1 / self.p) * (
+                    r - (x[chosen_i, :] @ mu_impute)
+                )
+            else:
+                pseudo_rewards[self.chosen_action] += (1 / self.p) * (
+                    r - (x[self.chosen_action, :] @ mu_impute)
+                )
             self.matching[self.t] = (
                 (self.pseudo_action == self.chosen_action),
                 x,
@@ -497,9 +560,19 @@ class RoLFLasso(ContextualBandit):
             )
 
             ## compute the main estimator
+            # Ensure main_prev has the correct dimension to match x.shape[1]
+            main_prev_adjusted = self.main_prev
+            if len(main_prev_adjusted) != x.shape[1]:
+                if len(main_prev_adjusted) < x.shape[1]:
+                    # Pad with zeros if too small
+                    main_prev_adjusted = np.pad(main_prev_adjusted, (0, x.shape[1] - len(main_prev_adjusted)))
+                else:
+                    # Truncate if too large
+                    main_prev_adjusted = main_prev_adjusted[:x.shape[1]]
+                    
             mu_main = scipy.optimize.minimize(
                 self.__main_loss,
-                (gram_sqrt @ self.main_prev),
+                main_prev_adjusted,
                 args=(lam_main, self.matching),
                 method="SLSQP",
                 options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
@@ -508,6 +581,10 @@ class RoLFLasso(ContextualBandit):
             ## update the mu_hat
             self.mu_hat = mu_main
             self.mu_check = mu_impute
+            
+            # Update prev arrays for next round (ensure they match current dimensions)
+            self.impute_prev = mu_impute.copy()
+            self.main_prev = mu_main.copy()
         else:
             self.matching[self.t] = (
                 (self.pseudo_action == self.chosen_action),
@@ -517,13 +594,19 @@ class RoLFLasso(ContextualBandit):
                 None,
             )
 
-    def __imputation_loss(
-        self, beta: np.ndarray, X: np.ndarray, y: np.ndarray, lam: float
-    ):
-        residuals = (y - (X @ beta)) ** 2
-        loss = np.sum(residuals, axis=0)
-        l1_norm = vector_norm(beta, type="l1")
-        return loss + (lam * l1_norm)
+    # def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
+    #     ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
+    #     loss = 0
+    #     for key in matching_history:
+    #         matched, X, pseudo_rewards, _, _ = matching_history[key]
+    #         if matched:
+    #             residuals = (pseudo_rewards - (X @ beta)) ** 2
+    #             interim_loss = np.sum(residuals, axis=0)
+    #         else:
+    #             interim_loss = 0
+    #         loss += interim_loss
+    #     l1_norm = vector_norm(beta, type="l1")
+    #     return loss + (lam * l1_norm)
 
     # def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
     #     ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
@@ -566,6 +649,37 @@ class RoLFLasso(ContextualBandit):
         # Total loss
         return residuals_sum + lam * l1_norm
 
+    def __imputation_loss(
+        self, beta: np.ndarray, X: np.ndarray, y: np.ndarray, lam: float
+    ):
+        """
+        Generic imputation loss for RoLFLasso.
+
+        Handles two shapes of beta:
+        1) beta has length equal to X.shape[1]  → treats beta as a (d,) vector.
+        2) beta has length > X.shape[1] (e.g., flattened square matrix) →
+           reshapes beta to (d, d2) and predicts with an all-ones item vector.
+        """
+        d = X.shape[1]                  # feature dimension on user side
+
+        if beta.size == d:
+            # Standard contextual case: beta is a (d,) vector
+            preds = X @ beta            # (t,)
+        else:
+            # Expanded case: beta represents a matrix Φ of shape (d, d2)
+            # Infer d2 from beta length
+            d2 = beta.size // d
+            Phi = beta.reshape(d, d2)   # (d, d2)
+            preds = X @ Phi @ np.ones(d2)  # (t,)
+
+        residuals = (y - preds) ** 2
+        loss = np.sum(residuals)
+
+        # ℓ₁ regularization (vector or matrix flattened)
+        l1_norm = np.sum(np.abs(beta))
+
+        return loss + lam * l1_norm
+
     def __get_param(self):
         return {"param": self.mu_hat, "impute": self.mu_check}
 
@@ -585,23 +699,30 @@ class RoLFRidge(ContextualBandit):
         self.t = 0
         self.d = d
         self.K = arms
-        self.mu_hat = np.zeros(self.K)  # main estimator
-        self.mu_check = np.zeros(self.K)  # imputation estimator
+        self.mu_hat = np.zeros(self.d)  # main estimator - should match feature dimension
+        self.mu_check = np.zeros(self.d)  # imputation estimator
         self.sigma = sigma  # variance of noise
         self.p = p  # hyperparameter for action sampling
         self.delta = delta  # confidence parameter
         self.matching = (
             dict()
         )  # history of rounds that the pseudo action and the chosen action matched
-        self.Vinv_impute = self.p * np.identity(self.K)
-        self.xty_impute = np.zeros(self.K)
+        self.Vinv_impute = self.p * np.identity(self.d)
+        self.xty_impute = np.zeros(self.d)
         self.random_state = random_state
         self.explore = explore
         self.init_explore = init_explore
 
-    def choose(self, x: np.ndarray):
+    def choose(self, x: np.ndarray, y: Optional[np.ndarray] = None):
         # x : (K, d) augmented feature matrix where each row denotes the augmented features
         self.t += 1
+        
+        # Ensure estimator arrays match the actual feature dimension on first call
+        if self.t == 1 and len(self.mu_hat) != x.shape[1]:
+            self.mu_hat = np.zeros(x.shape[1])
+            self.mu_check = np.zeros(x.shape[1])
+            self.Vinv_impute = self.p * np.identity(x.shape[1])
+            self.xty_impute = np.zeros(x.shape[1])
 
         ## compute the \hat{a}_t
         if self.explore:
@@ -652,7 +773,21 @@ class RoLFRidge(ContextualBandit):
         # r : reward of the chosen_action
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator based on history
-            chosen_context = x[self.chosen_action, :]
+            # Check if we're in a bilinear setting by comparing chosen_action with data dimensions
+            if self.chosen_action >= x.shape[0]:
+                # We're in bilinear mode - need to convert global action to row index
+                M = x.shape[0]
+                # Estimate N based on the chosen action
+                estimated_total_actions = self.chosen_action + 1
+                N = estimated_total_actions // M
+                if N * M < estimated_total_actions:
+                    N += 1
+                chosen_i = self.chosen_action // N
+                chosen_context = x[chosen_i, :]
+            else:
+                # Regular case where action directly corresponds to row
+                chosen_context = x[self.chosen_action, :]
+                
             self.Vinv_impute = shermanMorrison(self.Vinv_impute, chosen_context)
             self.xty_impute += r * chosen_context
             mu_impute = self.Vinv_impute @ self.xty_impute
@@ -663,9 +798,23 @@ class RoLFRidge(ContextualBandit):
                     matched, data, _, chosen, reward = self.matching[key]
                     if matched:
                         new_pseudo_rewards = data @ mu_impute
-                        new_pseudo_rewards[chosen] += (1 / self.p) * (
-                            reward - (data[chosen, :] @ mu_impute)
-                        )
+                        
+                        # Check if we're in bilinear mode for the stored action
+                        if chosen >= data.shape[0]:
+                            # Convert global action to row index
+                            M = data.shape[0]
+                            estimated_total_actions = chosen + 1
+                            N = estimated_total_actions // M
+                            if N * M < estimated_total_actions:
+                                N += 1
+                            chosen_i = chosen // N
+                            new_pseudo_rewards[chosen_i] += (1 / self.p) * (
+                                reward - (data[chosen_i, :] @ mu_impute)
+                            )
+                        else:
+                            new_pseudo_rewards[chosen] += (1 / self.p) * (
+                                reward - (data[chosen, :] @ mu_impute)
+                            )
                         # overwrite the value
                         self.matching[key] = (
                             matched,
@@ -677,9 +826,23 @@ class RoLFRidge(ContextualBandit):
 
             ## compute the pseudo rewards for the current data
             pseudo_rewards = x @ mu_impute
-            pseudo_rewards[self.chosen_action] += (1 / self.p) * (
-                r - (x[self.chosen_action, :] @ mu_impute)
-            )
+            
+            # Check if we're in bilinear mode for the current chosen action
+            if self.chosen_action >= x.shape[0]:
+                # Convert global action to row index
+                M = x.shape[0]
+                estimated_total_actions = self.chosen_action + 1
+                N = estimated_total_actions // M
+                if N * M < estimated_total_actions:
+                    N += 1
+                chosen_i = self.chosen_action // N
+                pseudo_rewards[chosen_i] += (1 / self.p) * (
+                    r - (x[chosen_i, :] @ mu_impute)
+                )
+            else:
+                pseudo_rewards[self.chosen_action] += (1 / self.p) * (
+                    r - (x[self.chosen_action, :] @ mu_impute)
+                )
             self.matching[self.t] = (
                 (self.pseudo_action == self.chosen_action),
                 x,
@@ -689,7 +852,7 @@ class RoLFRidge(ContextualBandit):
             )
 
             ## compute the main estimator
-            mu_main = self.__main_estimation(self.matching, dimension=self.K)
+            mu_main = self.__main_estimation(self.matching, dimension=x.shape[1])
 
             ## update the mu_hat
             self.mu_hat = mu_main
@@ -798,8 +961,10 @@ class DRLassoBandit(ContextualBandit):
     def update(self, x, r):
         ## x : (K, d) array - context of the all actions in round t
         ## r : float - reward
+        # Handle potential out-of-bounds action in bilinear mode
+        idx = self.action % x.shape[0]
         r_hat = np.mean(self.rhat) + (
-            (r - (x[self.action] @ self.beta_hat)) / (self.arms * self.pi_t)
+            (r - (x[idx] @ self.beta_hat)) / (self.arms * self.pi_t)
         )
         if self.tr:
             r_hat = np.minimum(3.0, np.maximum(-3.0, r_hat))
@@ -957,6 +1122,8 @@ class BiRoLFLasso(ContextualBandit):
         self.N = N
         self.delta = delta
         self.p = p
+        self.p1 = self.p
+        self.p2 = self.p
         self.random_state = random_state
         self.sigma = sigma
 
@@ -1000,8 +1167,10 @@ class BiRoLFLasso(ContextualBandit):
         self.j_hat = j_hat
 
         ## sampling actions
-        pseudo_action = -1
-        chosen_action = -2
+        pseudo_action_i = -1
+        pseudo_action_j = -1
+        chosen_action_i = -2
+        chosen_action_j = -2
         count1 = 0
         count2 = 0
 
@@ -1103,23 +1272,39 @@ class BiRoLFLasso(ContextualBandit):
         lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p**2)) * np.sqrt(
             2 * self.t * np.log(2 * self.M * self.N * self.t**2 / self.delta)
         )
+        # No gram/gram_sqrt calculation needed anymore
 
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator
+<<<<<<< Updated upstream
             # Convert action indices to row indices for x matrix
             action_rows = [action_to_ij(action, self.N)[0] for action in self.action_history]
             action_cols = [action_to_ij(action, self.N)[1] for action in self.action_history]
             data_impute = x[action_rows, :]  # (t, d) matrix
+=======
+            # Recover user-side row indices from stored global actions
+            i_history = [action // self.N for action in self.action_history]
+            data_impute = x[i_history, :]
+>>>>>>> Stashed changes
             target_impute = np.array(self.reward_history)
-            # print(f"gram_sqrt : {gram_sqrt.shape}")
-            # print(f"impute_prev : {self.impute_prev.shape}")
-            Phi_impute = scipy.optimize.minimize(
+            # Prepare a 1D initial guess for the imputation estimator (no gram_sqrt)
+            x0_impute = self.impute_prev.flatten()
+            result_impute = scipy.optimize.minimize(
                 self.__imputation_loss,
+<<<<<<< Updated upstream
                 self.impute_prev.flatten(),
                 args=(data_impute, target_impute, lam_impute),
                 method="SLSQP",
                 options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
             ).x.reshape(self.M, self.N)
+=======
+                x0_impute,
+                args=(data_impute, target_impute, lam_impute),
+                method="SLSQP",
+                options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
+            )
+            Phi_impute = result_impute.x.reshape(self.M, self.N)
+>>>>>>> Stashed changes
 
             ## compute and update the pseudo rewards
             if self.matching:
@@ -1137,7 +1322,7 @@ class BiRoLFLasso(ContextualBandit):
                         ) * (
                             reward
                             - (data_x[chosen_i, :] @ Phi_impute @ data_y[chosen_j, :])
-                        ).T
+                        )
                         # overwrite the value
                         self.matching[key] = (
                             matched,
@@ -1164,17 +1349,31 @@ class BiRoLFLasso(ContextualBandit):
             )
 
             ## compute the main estimator
-            Phi_main = scipy.optimize.minimize(
+            # Prepare a 1D initial guess for the main estimator
+            x0_main = self.main_prev.flatten()
+            result_main = scipy.optimize.minimize(
                 self.__main_loss,
+<<<<<<< Updated upstream
                 self.main_prev.flatten(),
                 args=(lam_main, self.matching),
                 method="SLSQP",
                 options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
             ).x.reshape(self.M, self.N)
+=======
+                x0_main,
+                args=(lam_main, self.matching),
+                method="SLSQP",
+                options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
+            )
+            Phi_main = result_main.x.reshape(self.M, self.N)
+>>>>>>> Stashed changes
 
             ## update the Phi_hat
             self.Phi_hat = Phi_main
             self.Phi_check = Phi_impute
+            # Store current estimators for use as initial guesses in next round
+            self.impute_prev = Phi_impute
+            self.main_prev = Phi_main
         else:
             self.matching[self.t] = (
                 (self.pseudo_action == self.chosen_action),
@@ -1185,10 +1384,10 @@ class BiRoLFLasso(ContextualBandit):
                 None,
             )
 
-    # beta is prev Phi
     def __imputation_loss(
         self, beta: np.ndarray, X: np.ndarray, r: np.ndarray, lam: float
     ):
+<<<<<<< Updated upstream
         # Reshape beta to matrix form
         beta_matrix = beta.reshape(self.M, self.N)
         # For bilinear case, we need to compute the reward for each action
@@ -1200,6 +1399,30 @@ class BiRoLFLasso(ContextualBandit):
         loss = np.sum(residuals)
         l1_norm = matrix_norm(beta_matrix, type="l1l1")
         return loss + (lam * l1_norm)
+=======
+        """
+        Imputation loss for BiRoLFLasso.
+
+        beta : flattened vector (M*N,) representing Φ
+        X    : (t, M) matrix of user-side features
+        r    : (t,) vector of observed rewards
+        lam  : ℓ₁ regularization coefficient
+        """
+        # Reshape beta into the (M, N) matrix Φ
+        Phi = beta.reshape(self.M, self.N)  # (M, N)
+
+        # Predicted rewards using an all-ones item vector
+        preds = X @ Phi @ np.ones(self.N)  # (t,)
+
+        # Squared residuals
+        residuals = (r - preds) ** 2
+        loss = np.sum(residuals)
+
+        # ℓ₁,₁-norm regularization
+        l1_norm = np.sum(np.abs(beta))
+
+        return loss + lam * l1_norm
+>>>>>>> Stashed changes
 
     # def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
     #     ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
@@ -1217,7 +1440,11 @@ class BiRoLFLasso(ContextualBandit):
 
     # matching_history: (matched,x,y,pseudo_rewards,chosen_action,r,)
     def __main_loss(self, beta: np.ndarray, lam: float, matching_history: dict):
+<<<<<<< Updated upstream
         # Reshape beta to matrix form
+=======
+        # Reshape beta back to matrix form for computation
+>>>>>>> Stashed changes
         beta_matrix = beta.reshape(self.M, self.N)
         
         # Extract matched keys and data
