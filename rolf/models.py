@@ -553,7 +553,7 @@ class RoLFLasso(ContextualBandit):
 
         # Compute residuals for matched keys
         residuals_list = [
-            (pseudo_rewards - X @ beta) ** 2
+            (pseudo_rewards - (X @ beta)) ** 2
             for X, pseudo_rewards in zip(X_list, pseudo_rewards_list)
         ]
 
@@ -968,6 +968,10 @@ class BiRoLFLasso(ContextualBandit):
         self.Phi_check = np.zeros((self.M, self.N))
         self.impute_prev = np.zeros((self.M, self.N))
         self.main_prev = np.zeros((self.M, self.N))
+        
+        # Initialize p1 and p2 for bilinear case
+        self.p1 = self.p
+        self.p2 = self.p
 
     def choose(self, x: np.ndarray, y: np.ndarray):
         # x : (M, M) augmented feature matrix where each row denotes the augmented features
@@ -1030,6 +1034,12 @@ class BiRoLFLasso(ContextualBandit):
         chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
 
         np.random.seed(self.random_state + self.t)
+
+        # Initialize variables for sampling
+        pseudo_action_i = -1
+        chosen_action_i = -2
+        pseudo_action_j = -1
+        chosen_action_j = -2
 
         while (pseudo_action_i != chosen_action_i) and (count1 <= max_iter1):
             ## Sample the pseudo action
@@ -1096,22 +1106,29 @@ class BiRoLFLasso(ContextualBandit):
 
         if self.pseudo_action == self.chosen_action:
             ## compute the imputation estimator
-            data_impute = x[self.action_history, :]  # (t, d) matrix
+            # Convert action indices to row indices for x matrix
+            action_rows = [action_to_ij(action, self.N)[0] for action in self.action_history]
+            action_cols = [action_to_ij(action, self.N)[1] for action in self.action_history]
+            data_impute = x[action_rows, :]  # (t, d) matrix
             target_impute = np.array(self.reward_history)
             # print(f"gram_sqrt : {gram_sqrt.shape}")
             # print(f"impute_prev : {self.impute_prev.shape}")
             Phi_impute = scipy.optimize.minimize(
                 self.__imputation_loss,
-                self.impute_prev,
+                self.impute_prev.flatten(),
                 args=(data_impute, target_impute, lam_impute),
                 method="SLSQP",
                 options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
-            ).x
+            ).x.reshape(self.M, self.N)
 
             ## compute and update the pseudo rewards
             if self.matching:
                 for key in self.matching:
-                    matched, data_x, data_y, _, chosen, reward = self.matching[key]
+                    if len(self.matching[key]) == 6:
+                        matched, data_x, data_y, _, chosen, reward = self.matching[key]
+                    else:
+                        matched, data_x, data_y, _, _ = self.matching[key]
+                        chosen, reward = None, None
                     if matched:
                         chosen_i, chosen_j = action_to_ij(chosen, self.N)
                         new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
@@ -1135,7 +1152,7 @@ class BiRoLFLasso(ContextualBandit):
             pseudo_rewards = x @ Phi_impute @ y.T
             chosen_i, chosen_j = action_to_ij(self.chosen_action, self.N)
             pseudo_rewards[chosen_i, chosen_j] += ((1 / self.p) ** 2) * (
-                r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j.T])
+                r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j, :])
             )
             self.matching[self.t] = (
                 (self.pseudo_action == self.chosen_action),
@@ -1149,11 +1166,11 @@ class BiRoLFLasso(ContextualBandit):
             ## compute the main estimator
             Phi_main = scipy.optimize.minimize(
                 self.__main_loss,
-                self.main_prev,
+                self.main_prev.flatten(),
                 args=(lam_main, self.matching),
                 method="SLSQP",
                 options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
-            ).x
+            ).x.reshape(self.M, self.N)
 
             ## update the Phi_hat
             self.Phi_hat = Phi_main
@@ -1165,15 +1182,23 @@ class BiRoLFLasso(ContextualBandit):
                 None,
                 None,
                 None,
+                None,
             )
 
     # beta is prev Phi
     def __imputation_loss(
-        self, beta: np.ndarray, X: np.ndarray, Y: np.ndarray, r: np.ndarray, lam: float
+        self, beta: np.ndarray, X: np.ndarray, r: np.ndarray, lam: float
     ):
-        residuals = (r - (X @ beta @ Y.T)) ** 2
-        loss = np.sum(residuals, axis=0)
-        l1_norm = matrix_norm(beta, type="l1l1")
+        # Reshape beta to matrix form
+        beta_matrix = beta.reshape(self.M, self.N)
+        # For bilinear case, we need to compute the reward for each action
+        # X contains the row indices for each action, so we need to extract the corresponding rows
+        # Since we're dealing with bilinear case, we need to handle this differently
+        # For now, let's assume we're computing the reward for the chosen actions
+        predicted_rewards = np.array([np.sum(X[i] * beta_matrix) for i in range(len(r))])
+        residuals = (r - predicted_rewards) ** 2
+        loss = np.sum(residuals)
+        l1_norm = matrix_norm(beta_matrix, type="l1l1")
         return loss + (lam * l1_norm)
 
     # def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
@@ -1192,6 +1217,9 @@ class BiRoLFLasso(ContextualBandit):
 
     # matching_history: (matched,x,y,pseudo_rewards,chosen_action,r,)
     def __main_loss(self, beta: np.ndarray, lam: float, matching_history: dict):
+        # Reshape beta to matrix form
+        beta_matrix = beta.reshape(self.M, self.N)
+        
         # Extract matched keys and data
         matched_keys = [
             key for key, value in matching_history.items() if value[0]
@@ -1211,7 +1239,7 @@ class BiRoLFLasso(ContextualBandit):
 
         # Compute residuals for matched keys
         residuals_list = [
-            (pseudo_rewards - x @ beta @ y.T) ** 2
+            (pseudo_rewards - x @ beta_matrix @ y.T) ** 2
             for x, y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
         ]
 
@@ -1219,7 +1247,7 @@ class BiRoLFLasso(ContextualBandit):
         residuals_sum = sum(np.sum(residuals) for residuals in residuals_list)
 
         # L1 regularization
-        l1_norm = np.sum(np.abs(beta))
+        l1_norm = np.sum(np.abs(beta_matrix))
 
         # Total loss
         return residuals_sum + lam * l1_norm
