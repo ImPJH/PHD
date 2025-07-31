@@ -10,8 +10,9 @@ AGENT_DICT = {
     "mab_ucb": r"UCB($\delta$)",
     "linucb": "LinUCB",
     "lints": "LinTS",
-    "rolf_lasso": "RoLF-Lasso (Ours)",
-    "rolf_ridge": "RoLF-Ridge (Ours)",
+    "rolf_lasso": "RoLF-Lasso (Kim & Park)",
+    "rolf_ridge": "RoLF-Ridge (Kim & Park)",
+    "birolf_lasso": "BiRoLF-Lasso (Ours)",
     "dr_lasso": "DRLasso",
 }
 
@@ -170,7 +171,7 @@ def bilinear_feature_generator(
 
         # Compute U as a multiplication between C and X
         Y = C @ V  # (d_y, N)
-        Z = np.concatenate([Y, V], axis=0)  # (d_y_star, N)))
+        Y_star = np.concatenate([Y, V], axis=0)  # (d_y_star, N)))
 
     return X_star, X, Y_star, Y
 
@@ -192,9 +193,9 @@ def bilinear_run_trials(
     fname: str,
 ):
     total_arms = M * N
-    total_true_dim = d_x_star * d_y_star
     total_obs_dim = d_x * d_y
 
+    ## how much do the exploration phase?
     exp_map = {
         "double": (2 * (M * N)),
         "sqr": ((M * N) ** 2),
@@ -206,11 +207,13 @@ def bilinear_run_trials(
     ## run and collect the regrets
     regret_container = np.zeros(trials, dtype=object)
     for trial in range(trials):
+        ### Setting random state (Manual Folded)
         if random_state is not None:
             random_state_ = random_state + (513 * trial)
         else:
             random_state_ = None
 
+        ### Select agent (Manual Folded)
         if agent_type == "linucb":
             agent = LinUCB(d=total_obs_dim, lbda=cfg.p, delta=cfg.delta)
 
@@ -315,9 +318,9 @@ def bilinear_run_trials(
             random_state=random_state_ + 1,
         )
 
-        ## Z_star: (d_x_star * d_y_star, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
-        ## Z: (d_x * d_y, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
-        Z_star, Z = np.kron(X_star, Y_star), np.kron(X, Y)
+        # ## Z_star: (d_x_star * d_y_star, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
+        # ## Z: (d_x * d_y, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
+        # Z_star, Z = np.kron(X_star, Y_star), np.kron(X, Y)
 
         ## sample reward parameter after augmentation and compute the expected rewards
         reward_param_mat = bilinear_param_generator(
@@ -340,9 +343,8 @@ def bilinear_run_trials(
             or isinstance(agent, LinTS)
             or isinstance(agent, DRLassoBandit)
         ):
-            data_x = X.T  # maybe useless
-            data_y = Y.T  # maybe useless
-            data_z = Z.T  # (MN, total_true_dim)
+            data_x = X.T
+            data_y = Y.T
         else:
             # (M, M-d) matrix and each column vector denotes the orthogonal basis if M > d
             # (M, M) matrix from singular value decomposition if d > M
@@ -369,9 +371,6 @@ def bilinear_run_trials(
                 data_y = y_aug
             else:
                 data_y = basis_Y
-            data_z = np.kron(
-                data_x.T, data_y.T
-            ).T  # augmented into (MN,MN) matrix and each row vector denotes the augmented feature
 
         # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
 
@@ -382,7 +381,6 @@ def bilinear_run_trials(
             exp_rewards_mat=exp_rewards_mat,
             x=data_x,
             y=data_y,
-            z=data_z,
             noise_dist=cfg.reward_dist,
             noise_std=noise_std,
             random_state=random_state_,
@@ -402,21 +400,23 @@ def bilinear_run(
     exp_rewards_mat: np.ndarray,
     x: np.ndarray,
     y: np.ndarray,
-    z: np.ndarray,
     noise_dist: str,
     noise_std: float,
     random_state: int,
     verbose: bool,
     fname: str,
 ):
-
-    # x: augmented feature if the agent is RoLF (K, K)
+    # x, y: augmented feature if the agent is RoLF (M, M), (N, N) each.
     regrets = np.zeros(horizon, dtype=float)
 
     if not verbose:
         bar = tqdm(range(horizon))
     else:
         bar = range(horizon)
+
+    # For linear contextual bandits
+    # For RoLF this is (MN,MN), otherwise (MN,d_x*d_y)
+    z = np.kron(x, y)
 
     for t in bar:
         if random_state is not None:
@@ -430,8 +430,7 @@ def bilinear_run(
         ## compute the optimal action
         optimal_action = np.argmax(exp_rewards_mat)
         M, N = exp_rewards_mat.shape
-        optimal_i = (int)(optimal_action / N)
-        optimal_j = optimal_action % N
+        optimal_i, optimal_j = action_to_ij(optimal_action, N)
         optimal_reward = exp_rewards_mat[optimal_i][optimal_j]
 
         ## choose the best action
@@ -446,24 +445,26 @@ def bilinear_run(
         else:
             chosen_action = agent.choose()
         chosen_i, chosen_j = action_to_ij(chosen_action, N)
-        chosen_reward = exp_rewards_mat[chosen_i, chosen_j] + noise
+        chosen_reward = exp_rewards_mat[chosen_i][chosen_j] + noise
 
-        if verbose:
+        # HERE
+        if (t % 100 == 0 or (agent.__class__.__name__ in ["BiRoLFLasso","RoLFLasso","RoLFRidge"])) and verbose:
             try:
                 string = f"""
                         case : {cfg.case}, SEED : {cfg.seed}, M : {cfg.arm_x}, N: {cfg.arm_y},
-                        true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y}, 
-                        Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, 
-                        Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat}, 
-                        pseudo : {agent.pseudo_action}, chosen (i,j) : {(chosen_i,chosen_j)}
+                        true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y},
+                        Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__},
+                        Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat},
+                        pseudo : {agent.pseudo_action}, chosen action : {ij_to_action(chosen_i,chosen_j,cfg.arm_y)}
                     """
             except:
                 string = f"""
                         case : {cfg.case}, SEED : {cfg.seed}, M : {cfg.arm_x}, N: {cfg.arm_y},
-                        true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y}, 
-                        Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__}, 
-                        Round : {t+1}, optimal : {optimal_action}, chosen (i,j): {(chosen_i,chosen_j)}
+                        true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y},
+                        Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__},
+                        Round : {t+1}, optimal : {optimal_action}, chosen action: {ij_to_action(chosen_i,chosen_j,cfg.arm_y)}
                     """
+                
             save_log(path=LOG_PATH, fname=fname, string=" ".join(string.split()))
             print(" ".join(string.split()))
 
@@ -474,11 +475,12 @@ def bilinear_run(
         if isinstance(agent, BiRoLFLasso):
             agent.update(x=x, y=y, r=chosen_reward)
         elif isinstance(agent, ContextualBandit):
-            agent.update(x=x, r=chosen_reward)
+            agent.update(x=z, r=chosen_reward)
         else:
             agent.update(a=chosen_action, r=chosen_reward)
 
     return np.cumsum(regrets)
+
 
 ## nothing change compare to show_result()
 def bilinear_show_result(
@@ -534,12 +536,12 @@ def bilinear_run_agent(agent_type):
         d_y_star=cfg.true_dim_y,
         d_y=cfg.dim_y,
         N=cfg.arm_y,
-        noise_std= cfg.reward_std,
+        noise_std=cfg.reward_std,
         case=cfg.case,
         random_state=cfg.seed,
         verbose=True,
-        fname= f"Case_{cfg.case}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
-        )
+        fname=f"Case_{cfg.case}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
+    )
     key = AGENT_DICT[agent_type]
     return key, regrets
 
@@ -548,17 +550,25 @@ if __name__ == "__main__":
     ## hyper-parameters
     M = cfg.arm_x
     N = cfg.arm_y
-    
+
     d_x_star = cfg.true_dim_x
     d_y_star = cfg.true_dim_y
-    
+
     d_x = cfg.dim_x
     d_y = cfg.dim_y
 
     T = cfg.horizon
     SEED = cfg.seed
     sigma = cfg.reward_std
-    AGENTS = ["birolf_lasso", "rolf_lasso", "rolf_ridge", "dr_lasso", "linucb", "lints", "mab_ucb"]
+    AGENTS = [
+        "birolf_lasso",
+        "rolf_lasso",
+        "rolf_ridge",
+        "dr_lasso",
+        "linucb",
+        "lints",
+        "mab_ucb",
+    ]
     case = cfg.case
 
     fname = f"Case_{case}_M_{M}_N_{N}_xstar_{d_x_star}_ystar_{d_y_star}_dx_{d_x}_dy_{d_y}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"

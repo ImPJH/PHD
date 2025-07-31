@@ -17,14 +17,14 @@ def get_cfg():
     # parser.add_argument("--dim", "-d", type=int, default=10)
     
     ## For Bilinear model
-    parser.add_argument("--arm_x", "-M", type=int, default=20)
-    parser.add_argument("--arm_y", "-N", type=int, default=20)
-    parser.add_argument("--true_dim_x", "-tx", type=int, default=10)
-    parser.add_argument("--true_dim_y", "-ty", type=int, default=10)
-    parser.add_argument("--dim_x", "-dx", type=int, default=10)
-    parser.add_argument("--dim_y", "-dy", type=int, default=10)
+    parser.add_argument("--arm_x", "-M", type=int, default=10)
+    parser.add_argument("--arm_y", "-N", type=int, default=10)
+    parser.add_argument("--true_dim_x", "-tx", type=int, default=8)
+    parser.add_argument("--true_dim_y", "-ty", type=int, default=8)
+    parser.add_argument("--dim_x", "-dx", type=int, default=4)
+    parser.add_argument("--dim_y", "-dy", type=int, default=4)
 
-    parser.add_argument("--horizon", "-T", type=int, default=10000)
+    parser.add_argument("--horizon", "-T", type=int, default=2000)
     parser.add_argument("--seed", "-S", type=int, default=None)
     parser.add_argument("--rho_sq", type=float, default=0.5)
     
