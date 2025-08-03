@@ -1185,8 +1185,9 @@ class BiRoLFLasso(ContextualBandit):
     def __imputation_loss(
         self, beta: np.ndarray, X: np.ndarray, Y: np.ndarray, r: np.ndarray, lam: float
     ):
+        prev_impute = beta.reshape((self.M, self.N))
         residuals = np.array(
-            [(r_t - np.kron(x_t, y_t) @ beta) ** 2 for x_t, y_t, r_t in zip(X, Y, r)]
+            [(r_t - x_t @ prev_impute @ y_t.T) ** 2 for x_t, y_t, r_t in zip(X, Y, r)]
         )
         loss = np.sum(residuals)
         l1_norm = np.sum(np.abs(beta))
@@ -1239,9 +1240,10 @@ class BiRoLFLasso(ContextualBandit):
             matching_history[key][3] for key in matched_keys
         ]  # List of pseudo_rewards
 
+        prev_main = beta.reshape((self.M,self.N))
         # Compute residuals for matched keys
         residuals_list = [
-            (pseudo_rewards - (np.kron(X, Y) @ beta).reshape(pseudo_rewards.shape)) ** 2
+            (pseudo_rewards - X @ prev_main @ Y.T) ** 2
             for X, Y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
         ]
 

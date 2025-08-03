@@ -448,7 +448,7 @@ def bilinear_run(
         chosen_reward = exp_rewards_mat[chosen_i][chosen_j] + noise
 
         # HERE
-        if (t % 100 == 0 or (agent.__class__.__name__ in ["BiRoLFLasso","RoLFLasso","RoLFRidge"])) and verbose:
+        if t % 10 == 0  and verbose:
             try:
                 string = f"""
                         case : {cfg.case}, SEED : {cfg.seed}, M : {cfg.arm_x}, N: {cfg.arm_y},
@@ -540,7 +540,7 @@ def bilinear_run_agent(agent_type):
         case=cfg.case,
         random_state=cfg.seed,
         verbose=True,
-        fname=f"Case_{cfg.case}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
+        fname=f"Case_{cfg.case}_Agent_{agent_type}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
     )
     key = AGENT_DICT[agent_type]
     return key, regrets
