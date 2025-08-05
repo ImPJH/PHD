@@ -1186,10 +1186,7 @@ class BiRoLFLasso(ContextualBandit):
         self, beta: np.ndarray, X: np.ndarray, Y: np.ndarray, r: np.ndarray, lam: float
     ):
         prev_impute = beta.reshape((self.M, self.N))
-        residuals = np.array(
-            [(r_t - x_t @ prev_impute @ y_t.T) ** 2 for x_t, y_t, r_t in zip(X, Y, r)]
-        )
-        loss = np.sum(residuals)
+        loss = np.sum((r - np.einsum('ti,ij,tj->t',X,prev_impute,Y))**2)
         l1_norm = np.sum(np.abs(beta))
         return loss + (lam * l1_norm)
 
