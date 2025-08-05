@@ -1186,23 +1186,9 @@ class BiRoLFLasso(ContextualBandit):
         self, beta: np.ndarray, X: np.ndarray, Y: np.ndarray, r: np.ndarray, lam: float
     ):
         prev_impute = beta.reshape((self.M, self.N))
-        loss = np.sum((r - np.einsum('ti,ij,tj->t',X,prev_impute,Y))**2)
+        loss = np.sum(np.power(r - np.einsum("ti,ij,tj->t", X, prev_impute, Y), 2))
         l1_norm = np.sum(np.abs(beta))
         return loss + (lam * l1_norm)
-
-    # def __main_loss(self, beta:np.ndarray, lam:float, matching_history:dict):
-    #     ## matching_history : dict[t] = (bool, X, y) - bool denotes whether the matching event occurred or not
-    #     loss = 0
-    #     for key in matching_history:
-    #         matched, X, pseudo_rewards, _, _ = matching_history[key]
-    #         if matched:
-    #             residuals = (pseudo_rewards - (X @ beta)) ** 2
-    #             interim_loss = np.sum(residuals, axis=0)
-    #         else:
-    #             interim_loss = 0
-    #         loss += interim_loss
-    #     l1_norm = vector_norm(beta, type="l1")
-    #     return loss + (lam * l1_norm)
 
     # matching_history: (matched,x,y,pseudo_rewards,chosen_action,r,)
     def __main_loss(self, beta: np.ndarray, lam: float, matching_history: dict):
@@ -1237,26 +1223,27 @@ class BiRoLFLasso(ContextualBandit):
             matching_history[key][3] for key in matched_keys
         ]  # List of pseudo_rewards
 
-        prev_main = beta.reshape((self.M,self.N))
+        prev_main = beta.reshape((self.M, self.N))
         # Compute residuals for matched keys
-        residuals_list = [
-            (pseudo_rewards - X @ prev_main @ Y.T) ** 2
-            for X, Y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
-        ]
+
+        loss = np.sum(
+            np.power(
+                pseudo_rewards_list
+                - np.einsum("tab,bc,tdc->tad", X_list, prev_main, Y_list),
+                2,
+            )
+        )
 
         # residuals_list = [
-        #     (pseudo_rewards - x @ beta @ y.T) ** 2
-        #     for x, y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
+        #     (pseudo_rewards - X @ prev_main @ Y.T) ** 2
+        #     for X, Y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
         # ]
-
-        # Sum all residuals efficiently
-        residuals_sum = sum(np.sum(residuals) for residuals in residuals_list)
 
         # L1 regularization
         l1_norm = np.sum(np.abs(beta))
 
         # Total loss
-        return residuals_sum + lam * l1_norm
+        return loss + lam * l1_norm
 
     def __get_param(self):
         return {"param": self.Phi_hat, "impute": self.Phi_check}
