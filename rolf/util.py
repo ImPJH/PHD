@@ -585,7 +585,7 @@ def matrix_sqrt(A: np.ndarray):
 
 
 def action_to_ij(a: int, N: int):
-    return ((int)(a / N), a % N)
+    return (a // N, a % N)
 
 
 def ij_to_action(i: int, j: int, N: int):
