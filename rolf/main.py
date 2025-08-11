@@ -1,6 +1,8 @@
 from cfg import get_cfg
 from models import *
 from util import *
+import time
+import datetime
 
 MOTHER_PATH = "."
 
@@ -13,15 +15,18 @@ AGENT_DICT = {
     "rolf_lasso": "RoLF-Lasso (Kim & Park)",
     "rolf_ridge": "RoLF-Ridge (Kim & Park)",
     "birolf_lasso": "BiRoLF-Lasso (Ours)",
+    "birolf_lasso_fista": "BiRoLF-Lasso-FISTA (Ours)",
     "dr_lasso": "DRLasso",
 }
 
 cfg = get_cfg()
 
-RESULT_PATH = f"{MOTHER_PATH}/results/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
-FIGURE_PATH = f"{MOTHER_PATH}/figures/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+date = datetime.datetime.now().strftime('%Y-%m-%d')
+
+RESULT_PATH = f"{MOTHER_PATH}/results/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+FIGURE_PATH = f"{MOTHER_PATH}/figures/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
 LOG_PATH = (
-    f"{MOTHER_PATH}/logs/{str(cfg.date)}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
+    f"{MOTHER_PATH}/logs/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
 )
 
 ## ~! Generate feature matrix Z(full feature), X(observerable feature) !~
@@ -176,9 +181,9 @@ def bilinear_feature_generator(
     return X_star, X, Y_star, Y
 
 
-def bilinear_run_trials(
+def bilinear_run_trial(
     agent_type: str,
-    trials: int,
+    now_trial: int,
     horizon: int,
     d_x_star: int,
     d_x: int,
@@ -205,190 +210,215 @@ def bilinear_run_trials(
     }
 
     ## run and collect the regrets
-    regret_container = np.zeros(trials, dtype=object)
-    for trial in range(trials):
-        ### Setting random state (Manual Folded)
-        if random_state is not None:
-            random_state_ = random_state + (513 * trial)
-        else:
-            random_state_ = None
+    regret_container = np.zeros(1, dtype=object)
+    
+    ### Setting random state (Manual Folded)
+    random_state_ = random_state
+    # if random_state is not None:
+    #     random_state_ = random_state + (513 * trial)
+    # else:
+    #     random_state_ = None
 
-        ### Select agent (Manual Folded)
-        if agent_type == "linucb":
-            agent = LinUCB(d=total_obs_dim, lbda=cfg.p, delta=cfg.delta)
+    ### Select agent (Manual Folded)
+    if agent_type == "linucb":
+        agent = LinUCB(d=total_obs_dim, lbda=cfg.p, delta=cfg.delta)
 
-        elif agent_type == "lints":
-            agent = LinTS(
-                d=total_obs_dim,
-                lbda=cfg.p,
-                horizon=horizon,
-                reward_std=noise_std,
-                delta=cfg.delta,
-            )
-
-        elif agent_type == "mab_ucb":
-            agent = UCBDelta(n_arms=total_arms, delta=cfg.delta)
-
-        elif agent_type == "rolf_lasso":
-            if cfg.explore:
-                agent = RoLFLasso(
-                    d=total_obs_dim,
-                    arms=total_arms,
-                    p=cfg.p,
-                    delta=cfg.delta,
-                    sigma=noise_std,
-                    random_state=random_state_,
-                    explore=cfg.explore,
-                    init_explore=exp_map[cfg.init_explore],
-                )
-            else:
-                agent = RoLFLasso(
-                    d=total_obs_dim,
-                    arms=total_arms,
-                    p=cfg.p,
-                    delta=cfg.delta,
-                    sigma=noise_std,
-                    random_state=random_state_,
-                )
-
-        elif agent_type == "rolf_ridge":
-            if cfg.explore:
-                agent = RoLFRidge(
-                    d=total_obs_dim,
-                    arms=total_arms,
-                    p=cfg.p,
-                    delta=cfg.delta,
-                    sigma=noise_std,
-                    random_state=random_state_,
-                    explore=cfg.explore,
-                    init_explore=exp_map[cfg.init_explore],
-                )
-            else:
-                agent = RoLFRidge(
-                    d=total_obs_dim,
-                    arms=total_arms,
-                    p=cfg.p,
-                    delta=cfg.delta,
-                    sigma=noise_std,
-                    random_state=random_state_,
-                )
-
-        elif agent_type == "dr_lasso":
-            agent = DRLassoBandit(
-                d=total_obs_dim, arms=total_arms, lam1=1.0, lam2=0.5, zT=10, tr=True
-            )
-
-        elif agent_type == "birolf_lasso":
-            if cfg.explore:
-                agent = BiRoLFLasso(
-                    M=M,
-                    N=N,
-                    sigma=noise_std,
-                    random_state=random_state_,
-                    delta=cfg.delta,
-                    p=cfg.p,
-                    explore=cfg.explore,
-                    init_explore=exp_map[cfg.init_explore],
-                    theoretical_init_explore=False,
-                )
-            else:
-                agent = BiRoLFLasso(
-                    M=M,
-                    N=N,
-                    sigma=noise_std,
-                    random_state=random_state_,
-                    delta=cfg.delta,
-                    p=cfg.p,
-                    theoretical_init_explore=False,
-                )
-
-        ## sample features
-        ## X_star: (d_x_star, M)
-        ## X: (d_x, M)
-        ## Y_star: (d_y_star, N)
-        ## Y: (d_y, N)
-        X_star, X, Y_star, Y = bilinear_feature_generator(
-            case=case,
-            d_x_star=d_x_star,
-            d_x=d_x,
-            d_y_star=d_y_star,
-            d_y=d_y,
-            M=M,
-            N=N,
-            random_state=random_state_ + 1,
-        )
-
-        # ## Z_star: (d_x_star * d_y_star, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
-        # ## Z: (d_x * d_y, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
-        # Z_star, Z = np.kron(X_star, Y_star), np.kron(X, Y)
-
-        ## sample reward parameter after augmentation and compute the expected rewards
-        reward_param_mat = bilinear_param_generator(
-            dimension_x=d_x_star,
-            dimension_y=d_y_star,
-            distribution=cfg.param_dist,
-            disjoint=True,
-            bound=cfg.param_bound,
-            bound_type=cfg.param_bound_type,
-            uniform_rng=cfg.param_uniform_rng,
-            random_state=random_state_,
-        )
-
-        ## (M,N) matrix with the maximum absolute value does not exceed 1
-        exp_rewards_mat = X_star.T @ reward_param_mat @ Y_star
-        exp_rewards_mat = exp_rewards_mat / np.max(np.abs(exp_rewards_mat))
-
-        if (
-            isinstance(agent, LinUCB)
-            or isinstance(agent, LinTS)
-            or isinstance(agent, DRLassoBandit)
-        ):
-            data_x = X.T
-            data_y = Y.T
-        else:
-            # (M, M-d) matrix and each column vector denotes the orthogonal basis if M > d
-            # (M, M) matrix from singular value decomposition if d > M
-            basis_X = orthogonal_complement_basis(X)
-
-            # (N, N-d) matrix and each column vector denotes the orthogonal basis if N > d
-            # (N, N) matrix from singular value decomposition if d > N
-            basis_Y = orthogonal_complement_basis(Y)
-
-            d_X, M = X.shape
-            if d_X <= M:
-                x_aug = np.hstack(
-                    (X.T, basis_X)
-                )  # augmented into (M, M) matrix and each row vector denotes the augmented feature
-                data_x = x_aug
-            else:
-                data_x = basis_X
-
-            d_Y, N = Y.shape
-            if d_Y <= N:
-                y_aug = np.hstack(
-                    (Y.T, basis_Y)
-                )  # augmented into (N, N) matrix and each row vector denotes the augmented feature
-                data_y = y_aug
-            else:
-                data_y = basis_Y
-
-        # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
-
-        regrets = bilinear_run(
-            trial=trial,
-            agent=agent,
+    elif agent_type == "lints":
+        agent = LinTS(
+            d=total_obs_dim,
+            lbda=cfg.p,
             horizon=horizon,
-            exp_rewards_mat=exp_rewards_mat,
-            x=data_x,
-            y=data_y,
-            noise_dist=cfg.reward_dist,
-            noise_std=noise_std,
-            random_state=random_state_,
-            verbose=verbose,
-            fname=fname,
+            reward_std=noise_std,
+            delta=cfg.delta,
         )
 
-        regret_container[trial] = regrets
+    elif agent_type == "mab_ucb":
+        agent = UCBDelta(n_arms=total_arms, delta=cfg.delta)
+
+    elif agent_type == "rolf_lasso":
+        if cfg.explore:
+            agent = RoLFLasso(
+                d=total_obs_dim,
+                arms=total_arms,
+                p=cfg.p,
+                delta=cfg.delta,
+                sigma=noise_std,
+                random_state=random_state_,
+                explore=cfg.explore,
+                init_explore=exp_map[cfg.init_explore],
+            )
+        else:
+            agent = RoLFLasso(
+                d=total_obs_dim,
+                arms=total_arms,
+                p=cfg.p,
+                delta=cfg.delta,
+                sigma=noise_std,
+                random_state=random_state_,
+            )
+
+    elif agent_type == "rolf_ridge":
+        if cfg.explore:
+            agent = RoLFRidge(
+                d=total_obs_dim,
+                arms=total_arms,
+                p=cfg.p,
+                delta=cfg.delta,
+                sigma=noise_std,
+                random_state=random_state_,
+                explore=cfg.explore,
+                init_explore=exp_map[cfg.init_explore],
+            )
+        else:
+            agent = RoLFRidge(
+                d=total_obs_dim,
+                arms=total_arms,
+                p=cfg.p,
+                delta=cfg.delta,
+                sigma=noise_std,
+                random_state=random_state_,
+            )
+
+    elif agent_type == "dr_lasso":
+        agent = DRLassoBandit(
+            d=total_obs_dim, arms=total_arms, lam1=1.0, lam2=0.5, zT=10, tr=True
+        )
+
+    elif agent_type == "birolf_lasso":
+        if cfg.explore:
+            agent = BiRoLFLasso(
+                M=M,
+                N=N,
+                sigma=noise_std,
+                random_state=random_state_,
+                delta=cfg.delta,
+                p=cfg.p,
+                explore=cfg.explore,
+                init_explore=exp_map[cfg.init_explore],
+                theoretical_init_explore=False,
+            )
+        else:
+            agent = BiRoLFLasso(
+                M=M,
+                N=N,
+                sigma=noise_std,
+                random_state=random_state_,
+                delta=cfg.delta,
+                p=cfg.p,
+                theoretical_init_explore=False,
+            )
+
+    elif agent_type == "birolf_lasso_fista":
+        if cfg.explore:
+            agent = BiRoLFLasso_FISTA(
+                M=M,
+                N=N,
+                sigma=noise_std,
+                random_state=random_state_,
+                delta=cfg.delta,
+                p=cfg.p,
+                explore=cfg.explore,
+                init_explore=exp_map[cfg.init_explore],
+                theoretical_init_explore=False,
+            )
+        else:
+            agent = BiRoLFLasso_FISTA(
+                M=M,
+                N=N,
+                sigma=noise_std,
+                random_state=random_state_,
+                delta=cfg.delta,
+                p=cfg.p,
+                theoretical_init_explore=False,
+            )
+    
+    ## sample features
+    ## X_star: (d_x_star, M)
+    ## X: (d_x, M)
+    ## Y_star: (d_y_star, N)
+    ## Y: (d_y, N)
+    X_star, X, Y_star, Y = bilinear_feature_generator(
+        case=case,
+        d_x_star=d_x_star,
+        d_x=d_x,
+        d_y_star=d_y_star,
+        d_y=d_y,
+        M=M,
+        N=N,
+        random_state=random_state_ + 1,
+    )
+
+    # ## Z_star: (d_x_star * d_y_star, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
+    # ## Z: (d_x * d_y, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
+    # Z_star, Z = np.kron(X_star, Y_star), np.kron(X, Y)
+
+    ## sample reward parameter after augmentation and compute the expected rewards
+    reward_param_mat = bilinear_param_generator(
+        dimension_x=d_x_star,
+        dimension_y=d_y_star,
+        distribution=cfg.param_dist,
+        disjoint=True,
+        bound=cfg.param_bound,
+        bound_type=cfg.param_bound_type,
+        uniform_rng=cfg.param_uniform_rng,
+        random_state=random_state_,
+    )
+
+    ## (M,N) matrix with the maximum absolute value does not exceed 1
+    exp_rewards_mat = X_star.T @ reward_param_mat @ Y_star
+    exp_rewards_mat = exp_rewards_mat / np.max(np.abs(exp_rewards_mat))
+
+    if (
+        isinstance(agent, LinUCB)
+        or isinstance(agent, LinTS)
+        or isinstance(agent, DRLassoBandit)
+    ):
+        data_x = X.T
+        data_y = Y.T
+    else:
+        # (M, M-d) matrix and each column vector denotes the orthogonal basis if M > d
+        # (M, M) matrix from singular value decomposition if d > M
+        basis_X = orthogonal_complement_basis(X)
+
+        # (N, N-d) matrix and each column vector denotes the orthogonal basis if N > d
+        # (N, N) matrix from singular value decomposition if d > N
+        basis_Y = orthogonal_complement_basis(Y)
+
+        d_X, M = X.shape
+        if d_X <= M:
+            x_aug = np.hstack(
+                (X.T, basis_X)
+            )  # augmented into (M, M) matrix and each row vector denotes the augmented feature
+            data_x = x_aug
+        else:
+            data_x = basis_X
+
+        d_Y, N = Y.shape
+        if d_Y <= N:
+            y_aug = np.hstack(
+                (Y.T, basis_Y)
+            )  # augmented into (N, N) matrix and each row vector denotes the augmented feature
+            data_y = y_aug
+        else:
+            data_y = basis_Y
+
+    # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
+
+    regrets = bilinear_run(
+        trial=now_trial,
+        agent=agent,
+        horizon=horizon,
+        exp_rewards_mat=exp_rewards_mat,
+        x=data_x,
+        y=data_y,
+        noise_dist=cfg.reward_dist,
+        noise_std=noise_std,
+        random_state=random_state_,
+        verbose=verbose,
+        fname=fname,
+    )
+
+    regret_container[0] = regrets
     return regret_container
 
 
@@ -438,7 +468,7 @@ def bilinear_run(
             distribution=noise_dist, size=1, std=noise_std, random_state=random_state_
         )
 
-        if isinstance(agent, BiRoLFLasso):
+        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA)):
             chosen_action = agent.choose(x, y)
         elif isinstance(agent, ContextualBandit):
             chosen_action = agent.choose(z)
@@ -472,7 +502,7 @@ def bilinear_run(
         regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
 
         ## update the agent
-        if isinstance(agent, BiRoLFLasso):
+        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA)):
             agent.update(x=x, y=y, r=chosen_reward)
         elif isinstance(agent, ContextualBandit):
             agent.update(x=z, r=chosen_reward)
@@ -486,10 +516,9 @@ def bilinear_run(
 def bilinear_show_result(
     regrets: dict, horizon: int, figsize: tuple = (6, 5), fontsize=11
 ):
-
     fig, ax = plt.subplots(figsize=figsize)
 
-    colors = ["blue", "orange", "green", "red", "purple", "black"]
+    colors = ["blue", "orange", "green", "red", "purple", "black", "brown", "olive"]
     period = horizon // 10
 
     z_init = len(colors)
@@ -525,10 +554,14 @@ def bilinear_show_result(
 
 
 # Function to run trials for a single agent
-def bilinear_run_agent(agent_type):
-    regrets = bilinear_run_trials(
+def bilinear_run_agent(trial_agent):
+    now_trial, agent_type = trial_agent
+
+    start = time.perf_counter()
+
+    regrets = bilinear_run_trial(
         agent_type=agent_type,
-        trials=cfg.trials,
+        now_trial=now_trial,
         horizon=cfg.horizon,
         d_x_star=cfg.true_dim_x,
         d_x=cfg.dim_x,
@@ -538,15 +571,21 @@ def bilinear_run_agent(agent_type):
         N=cfg.arm_y,
         noise_std=cfg.reward_std,
         case=cfg.case,
-        random_state=cfg.seed,
+        random_state=cfg.seed + (513 * now_trial),
         verbose=True,
         fname=f"Case_{cfg.case}_Agent_{agent_type}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
     )
-    key = AGENT_DICT[agent_type]
-    return key, regrets
+    
+    end = time.perf_counter()
+
+
+    key = (now_trial,AGENT_DICT[agent_type])
+    return key, regrets, end - start
 
 
 if __name__ == "__main__":
+    ##
+
     ## hyper-parameters
     M = cfg.arm_x
     N = cfg.arm_y
@@ -561,64 +600,48 @@ if __name__ == "__main__":
     SEED = cfg.seed
     sigma = cfg.reward_std
     AGENTS = [
-        "birolf_lasso",
         "rolf_lasso",
+        "birolf_lasso",
+        "birolf_lasso_fista",
         "rolf_ridge",
         "dr_lasso",
         "linucb",
         "lints",
         "mab_ucb",
     ]
+    TRIALS_AGENTS = []
+    for _agent in AGENTS:
+        for _trial in range(cfg.trials):
+            TRIALS_AGENTS.append((_trial,_agent))
+        
+    
     case = cfg.case
 
-    fname = f"Case_{case}_M_{M}_N_{N}_xstar_{d_x_star}_ystar_{d_y_star}_dx_{d_x}_dy_{d_y}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
-
-    # regret_results = dict()
-    # for agent_type in AGENTS:
-    #     regrets = run_trials(agent_type=agent_type,
-    #                          trials=cfg.trials,
-    #                          horizon=T,
-    #                          k=k,
-    #                          d=d,
-    #                          arms=arms,
-    #                          noise_std=cfg.reward_std,
-    #                          random_state=SEED,
-    #                          verbose=True)
-    #     key = AGENT_DICT[agent_type]
-    #     regret_results[key] = regrets
-
-    # # Function to run trials for a single agent
-    # def run_agent(agent_type):
-    #     regrets = run_trials(
-    #         agent_type=agent_type,
-    #         trials=cfg.trials,
-    #         horizon=T,
-    #         k=k,
-    #         d=d,
-    #         arms=arms,
-    #         noise_std=cfg.reward_std,
-    #         case=case,
-    #         random_state=SEED,
-    #         verbose=True,
-    #         fname=fname
-    #     )
-    #     key = AGENT_DICT[agent_type]
-    #     return key, regrets
-
     # Parallel execution using ProcessPoolExecutor
-    regret_results = dict()
-    with ProcessPoolExecutor(max_workers=8) as executor:
-        results = executor.map(bilinear_run_agent, AGENTS)
+    with ProcessPoolExecutor(max_workers=8)  as executor:
+        results = executor.map(bilinear_run_agent, TRIALS_AGENTS)
 
     # Collect results
-    for key, regrets in results:
-        regret_results[key] = regrets
+    regret_results = dict()
+    time_check = dict()
+    for key, regrets, time in results:
+        now_trial, agent_type = key
+
+        if agent_type not in regret_results.keys():
+            regret_results[agent_type] = np.zeros(cfg.trials, dtype=object)
+            time_check[agent_type] = time
+
+        regret_results[agent_type][now_trial] = regrets[0]
+        time_check[agent_type] += time
 
     fig = bilinear_show_result(regrets=regret_results, horizon=T, fontsize=15)
 
-    save_plot(fig, path=FIGURE_PATH, fname=fname)
+    fname = f"Case_{case}_M_{M}_N_{N}_xstar_{d_x_star}_ystar_{d_y_star}_dx_{d_x}_dy_{d_y}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
+
+    save_plot(fig, path=FIGURE_PATH, time_check = time_check, fname=fname)
     save_result(
         result=(vars(cfg), regret_results),
+        time_check = time_check,
         path=RESULT_PATH,
         fname=fname,
         filetype=cfg.filetype,

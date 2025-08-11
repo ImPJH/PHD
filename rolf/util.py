@@ -532,13 +532,21 @@ def bilinear_param_generator(
     return param
 
 
-def save_plot(fig: Figure, path: str, fname: str, extension: str = "pdf"):
+def save_plot(fig: Figure, path: str, time_check:dict, fname: str, extension: str = "pdf"):
     os.makedirs(path, exist_ok=True)
     fig.savefig(f"{path}/{fname}.{extension}")
+    
+    models = list(time_check.keys())
+    times = list(time_check.values())
+    with open(f"{path}/{fname}.txt","w") as f:
+        f.write("model\ttime\n")
+        for model, time in zip(models,times):
+            f.write(f"{model}\t{time}\n")
+
     print("Plot is Saved Completely!")
 
 
-def save_result(result: dict, path: str, fname: str, filetype: str):
+def save_result(result: dict, time_check:dict, path: str, fname: str, filetype: str):
     assert filetype in ["pickle", "json"]
     os.makedirs(path, exist_ok=True)
 

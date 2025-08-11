@@ -1247,3 +1247,775 @@ class BiRoLFLasso(ContextualBandit):
 
     def __get_param(self):
         return {"param": self.Phi_hat, "impute": self.Phi_check}
+
+
+
+class BiRoLFLasso_FISTA(ContextualBandit):
+    def __init__(
+        self,
+        M: int,
+        N: int,
+        sigma: float,
+        random_state: int,
+        delta: float,
+        p: float,
+        explore: bool = False,
+        init_explore: int = 0,
+        theoretical_init_explore: bool = False,
+    ):
+        self.t = 0
+        self.explore = explore
+        self.init_explore = init_explore
+        ## TODO: make theoretical C_e
+        if theoretical_init_explore:
+            # self.init_explore = ((8*M*N)**3)
+            pass
+        self.M = M
+        self.N = N
+        self.delta = delta
+        self.p = p
+        self.p1 = p
+        self.p2 = p
+        self.random_state = random_state
+        self.sigma = sigma
+
+        self.action_i_history = []
+        self.action_j_history = []
+        self.reward_history = []
+
+        self.matching = dict()
+        self.Phi_hat = np.zeros((self.M, self.N))
+        self.Phi_check = np.zeros((self.M, self.N))
+        self.impute_prev = np.zeros((self.M, self.N))
+        self.main_prev = np.zeros((self.M, self.N))
+
+        # --- Caches for fast proximal updates (FISTA) ---
+        # We aggregate per static arms (i,j) to compute exact gradients quickly.
+        self._static_arms_initialized = False
+        self.X_static = None   # (M, d_x) copy of x at first update
+        self.Y_static = None   # (N, d_y) copy of y at first update
+        # Per-arm matrices A_i = x_i x_i^T, B_j = y_j y_j^T
+        self.A_i = None        # list of length M, each (d_x, d_x)
+        self.B_j = None        # list of length N, each (d_y, d_y)
+        # Pair counts and reward sums
+        self.Ncnt = np.zeros((self.M, self.N), dtype=int)
+        self.Ssum = np.zeros((self.M, self.N), dtype=float)
+        # For each i, Bbar_i = sum_j Ncnt[i,j] * B_j
+        self.Bbar_i = None     # list of length M, each (d_y, d_y)
+        # Aggregated C_sum = sum_{i,j} Ssum[i,j] * x_i y_j^T  (shape (M,N) in Φ-space)
+        self.C_sum = np.zeros((self.M, self.N), dtype=float)
+
+        # FISTA hyperparameters
+        self.fista_max_iter = 200
+        self.fista_tol = 1e-6
+    # ---------- FISTA utilities (for imputation & main) ----------
+    @staticmethod
+    def _soft_threshold(Z: np.ndarray, tau: float) -> np.ndarray:
+        """Elementwise soft-thresholding for ℓ1 prox."""
+        return np.sign(Z) * np.maximum(np.abs(Z) - tau, 0.0)
+
+    @staticmethod
+    def _spectral_norm(M: np.ndarray, n_iter: int = 20) -> float:
+        """Power iteration approximation of spectral norm ||M||_2."""
+        if M.size == 0:
+            return 0.0
+        v = np.random.randn(M.shape[1])
+        v /= (np.linalg.norm(v) + 1e-12)
+        for _ in range(n_iter):
+            v = M.T @ (M @ v)
+            nv = np.linalg.norm(v) + 1e-12
+            v /= nv
+        return float(np.sqrt(v @ (M.T @ (M @ v))))
+
+    def _init_static_arms_if_needed(self, x: np.ndarray, y: np.ndarray) -> None:
+        """Initialize per-arm caches A_i, B_j, Bbar_i and store static copies of x,y at first update."""
+        if self._static_arms_initialized:
+            return
+        self.X_static = x.copy()
+        self.Y_static = y.copy()
+        # Build A_i and B_j from static arms
+        self.A_i = [np.outer(self.X_static[i, :], self.X_static[i, :]) for i in range(self.M)]
+        self.B_j = [np.outer(self.Y_static[j, :], self.Y_static[j, :]) for j in range(self.N)]
+        # Initialize Bbar_i as zeros
+        self.Bbar_i = [np.zeros((self.Y_static.shape[1], self.Y_static.shape[1]), dtype=float) for _ in range(self.M)]
+        self._static_arms_initialized = True
+
+    def _update_impute_caches(self, i: int, j: int, r: float) -> None:
+        """Incremental updates for imputation aggregates given a new observation (i,j,r)."""
+        self.Ncnt[i, j] += 1
+        self.Ssum[i, j] += r
+        # Bbar_i[i] += B_j
+        self.Bbar_i[i] += self.B_j[j]
+        # C_sum += r * x_i y_j^T
+        self.C_sum += np.outer(self.X_static[i, :], self.Y_static[j, :]) * r
+
+    def _grad_impute(self, Phi: np.ndarray) -> np.ndarray:
+        """Exact gradient: 2 * (sum_i A_i Φ Bbar_i[i] - C_sum)."""
+        G = -2.0 * self.C_sum
+        for i in range(self.M):
+            G += 2.0 * (self.A_i[i] @ Phi @ self.Bbar_i[i])
+        return G
+
+    def _impute_lipschitz_upper(self) -> float:
+        """Conservative upper bound of Lipschitz constant: 2 * sum_i ||A_i||_2 * ||Bbar_i[i]||_2."""
+        total = 0.0
+        for i in range(self.M):
+            LA = self._spectral_norm(self.A_i[i])
+            LB = self._spectral_norm(self.Bbar_i[i]) if np.any(self.Bbar_i[i]) else 0.0
+            total += LA * LB
+        return 2.0 * max(total, 1e-12)
+
+    def _fista_l1(self, Phi0: np.ndarray, lam: float, grad_fn, L_bound: float, max_iter: int = None, tol: float = None) -> np.ndarray:
+        """Generic FISTA for min_Φ g(Φ) + lam ||Φ||_1 with gradient oracle grad_fn and Lipschitz bound L_bound."""
+        if max_iter is None:
+            max_iter = self.fista_max_iter
+        if tol is None:
+            tol = self.fista_tol
+        L = max(L_bound, 1e-12)
+        eta = 1.0 / L
+        Y = Phi0.copy()
+        Phi = Phi0.copy()
+        t_par = 1.0
+        for _ in range(max_iter):
+            G = grad_fn(Y)
+            Phi_next = self._soft_threshold(Y - eta * G, lam * eta)
+            t_next = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * t_par * t_par))
+            Y = Phi_next + ((t_par - 1.0) / t_next) * (Phi_next - Phi)
+            if np.linalg.norm(Phi_next - Phi, ord='fro') <= tol * max(1.0, np.linalg.norm(Phi, ord='fro')):
+                Phi = Phi_next
+                break
+            Phi = Phi_next
+            t_par = t_next
+        return Phi
+
+    def choose(self, x: np.ndarray, y: np.ndarray):
+        # x : (M, M) augmented feature matrix where each row denotes the augmented features
+        # y : (N, N) augmented feature matrix where each row denotes the augmented features
+
+        self.t += 1
+
+        ## compute the \hat{a}_t
+        if self.explore:
+            if self.t > self.init_explore:
+                decision_rule = x @ self.Phi_hat @ y.T
+                # print(f"Decision rule : {decision_rule}")
+                a_hat = np.argmax(decision_rule)
+            else:
+                a_hat = np.random.choice(np.arange(self.M * self.N))
+        else:
+            ## decision_rule : (M,N)
+            decision_rule = x @ self.Phi_hat @ y.T
+            # print(f"Decision rule : {decision_rule}")
+            a_hat = np.argmax(decision_rule)
+
+        i_hat, j_hat = action_to_ij(a_hat, self.N)
+
+        self.a_hat = a_hat
+        self.i_hat = i_hat
+        self.j_hat = j_hat
+
+        ## sampling actions
+        count1 = 0
+        count2 = 0
+
+        ## ~! rho_t !~ ##
+        max_iter1 = int(
+            np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p1))
+        )
+        max_iter2 = int(
+            np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p2))
+        )
+
+        ## ~! phi_t !~ ##
+        pseudo_dist_x = np.array([(1 - self.p1) / (self.M - 1)] * self.M, dtype=float)
+        pseudo_dist_x[i_hat] = self.p1
+
+        pseudo_dist_y = np.array([(1 - self.p2) / (self.N - 1)] * self.N, dtype=float)
+        pseudo_dist_y[j_hat] = self.p2
+
+        ## ~! epsilon(sqrt(t))-greedy ~! ##
+        chosen_dist_x = np.array(
+            [(1 / np.sqrt(self.t)) / (self.M - 1)] * self.M,
+            dtype=float,
+        )
+        chosen_dist_x[i_hat] = 1 - (1 / np.sqrt(self.t))
+
+        chosen_dist_y = np.array(
+            [(1 / np.sqrt(self.t)) / (self.N - 1)] * self.N,
+            dtype=float,
+        )
+        chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
+
+        np.random.seed(self.random_state + self.t)
+
+        pseudo_action_i = -1
+        chosen_action_i = -2
+        while (pseudo_action_i != chosen_action_i) and (count1 <= max_iter1):
+            ## Sample the pseudo action
+            pseudo_action_i = np.random.choice(
+                [i for i in range(self.M)], size=1, replace=False, p=pseudo_dist_x
+            ).item()
+
+            ## Sample the chosen action
+            chosen_action_i = np.random.choice(
+                [i for i in range(self.M)], size=1, replace=False, p=chosen_dist_x
+            ).item()
+
+            count1 += 1
+
+        pseudo_action_j = -1
+        chosen_action_j = -2
+        while (pseudo_action_j != chosen_action_j) and (count2 <= max_iter2):
+            ## Sample the pseudo action
+            pseudo_action_j = np.random.choice(
+                [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
+            ).item()
+
+            ## Sample the chosen action
+            chosen_action_j = np.random.choice(
+                [i for i in range(self.N)], size=1, replace=False, p=chosen_dist_y
+            ).item()
+
+            count2 += 1
+
+        pseudo_action = pseudo_action_i * self.N + pseudo_action_j
+        chosen_action = chosen_action_i * self.N + chosen_action_j
+
+        # add to the history
+        self.action_i_history.append(chosen_action_i)
+        self.action_j_history.append(chosen_action_j)
+
+        self.pseudo_action = pseudo_action
+        self.chosen_action = chosen_action
+        return chosen_action
+
+    def update(self, x: np.ndarray, y: np.ndarray, r: float):
+        # x : (M, d_x) augmented feature matrix (assumed time-invariant across rounds)
+        # y : (N, d_y) augmented feature matrix (assumed time-invariant across rounds)
+        # r : reward of the chosen_action
+        self.reward_history.append(r)
+
+        # Initialize per-arm caches on first call
+        self._init_static_arms_if_needed(x, y)
+
+        # Indices of the actually chosen pair and its features
+        chosen_i, chosen_j = action_to_ij(self.chosen_action, self.N)
+
+        # Always update imputation aggregates with new observation (to match original behavior)
+        self._update_impute_caches(chosen_i, chosen_j, r)
+
+        # Compute regularization strengths
+        kappa_x = np.power(np.sum(np.power(np.max(np.abs(x), axis=1), 4)), 0.25)
+        kappa_y = np.power(np.sum(np.power(np.max(np.abs(y), axis=1), 4)), 0.25)
+        lam_impute = (
+            2 * self.sigma * kappa_x * kappa_y * np.sqrt(2 * self.t * np.log(2 * self.M * self.N * (self.t ** 2) / self.delta))
+        )
+        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p ** 2)) * np.sqrt(
+            2 * self.t * np.log(2 * self.M * self.N * (self.t ** 2) / self.delta)
+        )
+
+        if self.pseudo_action == self.chosen_action:
+            # --- Imputation estimator via FISTA ---
+            L_imp = self._impute_lipschitz_upper()
+            Phi_impute = self._fista_l1(self.impute_prev, lam_impute, self._grad_impute, L_imp)
+
+            # --- Update/compute pseudo-rewards for all matched rounds with current Phi_impute ---
+            if self.matching:
+                for key in self.matching:
+                    matched, data_x, data_y, _, chosen, reward = self.matching[key]
+                    if matched:
+                        ci, cj = action_to_ij(chosen, self.N)
+                        new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
+                        new_pseudo_rewards[ci, cj] += ((1 / self.p) ** 2) * (
+                            reward - (data_x[ci, :] @ Phi_impute @ data_y[cj, :])
+                        )
+                        self.matching[key] = (
+                            matched,
+                            data_x,
+                            data_y,
+                            new_pseudo_rewards,
+                            chosen,
+                            reward,
+                        )
+
+            # Pseudo-rewards for the current round and store into history
+            pseudo_rewards = x @ Phi_impute @ y.T
+            pseudo_rewards[chosen_i, chosen_j] += ((1 / self.p) ** 2) * (
+                r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j, :].T)
+            )
+            self.matching[self.t] = (
+                (self.pseudo_action == self.chosen_action),
+                x,
+                y,
+                pseudo_rewards,
+                self.chosen_action,
+                r,
+            )
+
+            # --- Build main-stage aggregates from matched rounds ---
+            A_main = np.zeros((self.M, self.M))
+            B_main = np.zeros((self.N, self.N))
+            C_main = np.zeros((self.M, self.N))
+            for key, tup in self.matching.items():
+                matched = tup[0]
+                if not matched:
+                    continue
+                X_t, Y_t, R_t = tup[1], tup[2], tup[3]
+                A_main += X_t.T @ X_t
+                B_main += Y_t.T @ Y_t
+                C_main += X_t.T @ R_t @ Y_t
+
+            # Lipschitz upper bound for main: 2 * sum_t ||X_t^T X_t||_2 * ||Y_t^T Y_t||_2
+            L_main = 0.0
+            for key, tup in self.matching.items():
+                matched = tup[0]
+                if not matched:
+                    continue
+                X_t, Y_t = tup[1], tup[2]
+                L_main += self._spectral_norm(X_t.T @ X_t) * self._spectral_norm(Y_t.T @ Y_t)
+            L_main = 2.0 * max(L_main, 1e-12)
+
+            def _grad_main(Phi: np.ndarray) -> np.ndarray:
+                G = np.zeros_like(Phi)
+                Csum = np.zeros_like(Phi)
+                for key, tup in self.matching.items():
+                    matched = tup[0]
+                    if not matched:
+                        continue
+                    X_t, Y_t, R_t = tup[1], tup[2], tup[3]
+                    A_t = X_t.T @ X_t
+                    B_t = Y_t.T @ Y_t
+                    G += 2.0 * (A_t @ Phi @ B_t)
+                    Csum += X_t.T @ R_t @ Y_t
+                G -= 2.0 * Csum
+                return G
+
+            Phi_main = self._fista_l1(self.main_prev, lam_main, _grad_main, L_main)
+
+            # Update parameters and warm-starts
+            self.Phi_hat = Phi_main
+            self.Phi_check = Phi_impute
+            self.impute_prev = Phi_impute
+            self.main_prev = Phi_main
+        else:
+            # No matched event: record only
+            self.matching[self.t] = (
+                (self.pseudo_action == self.chosen_action),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+
+    # beta is prev Phi
+    def __imputation_loss(
+        self, beta: np.ndarray, X: np.ndarray, Y: np.ndarray, r: np.ndarray, lam: float
+    ):
+        prev_impute = beta.reshape((self.M, self.N))
+        loss = np.sum(np.power(r - np.einsum("ti,ij,tj->t", X, prev_impute, Y), 2))
+        l1_norm = np.sum(np.abs(beta))
+        return loss + (lam * l1_norm)
+
+    # matching_history: (matched,x,y,pseudo_rewards,chosen_action,r,)
+    def __main_loss(self, beta: np.ndarray, lam: float, matching_history: dict):
+        # residuals_list = list()
+        # for _, value in matching_history.items():
+        #     if value[0]:
+        #         residuals_list.append((value[3] - (np.kron(value[1],value[2])@beta)) ** 2)
+
+        # # Sum all residuals efficiently
+        # residuals_sum = sum(np.sum(residuals) for residuals in residuals_list)
+
+        # # L1 regularization
+        # l1_norm = np.sum(np.abs(beta))
+
+        # # Total loss
+        # return residuals_sum + lam * l1_norm
+
+        # Extract matched keys and data
+        matched_keys = [
+            key for key, value in matching_history.items() if value[0]
+        ]  # Filter matched entries
+
+        X_list = [
+            matching_history[key][1] for key in matched_keys
+        ]  # List of X matrices
+
+        Y_list = [
+            matching_history[key][2] for key in matched_keys
+        ]  # List of Y matrices
+
+        pseudo_rewards_list = [
+            matching_history[key][3] for key in matched_keys
+        ]  # List of pseudo_rewards
+
+        prev_main = beta.reshape((self.M, self.N))
+        # Compute residuals for matched keys
+
+        loss = np.sum(
+            np.power(
+                pseudo_rewards_list
+                - np.einsum("tab,bc,tdc->tad", X_list, prev_main, Y_list),
+                2,
+            )
+        )
+
+        # residuals_list = [
+        #     (pseudo_rewards - X @ prev_main @ Y.T) ** 2
+        #     for X, Y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
+        # ]
+
+        # L1 regularization
+        l1_norm = np.sum(np.abs(beta))
+
+        # Total loss
+        return loss + lam * l1_norm
+
+    def __get_param(self):
+        return {"param": self.Phi_hat, "impute": self.Phi_check}
+    
+
+class LowOFUL(ContextualBandit):
+    """
+    LowOFUL: A variant of OFUL for almost-low-dimensional structure.
+    Implements Algorithm 1 from “Bilinear Bandits with Low-rank Structure”:
+      - p: ambient dimension
+      - k: “good” subspace dimension
+      - lam: regularization on the first k coordinates
+      - lam_perp: regularization on the remaining p–k coordinates
+      - B: bound on ||θ*||₂
+      - B_perp: bound on ||θ*_{k+1:p}||₂
+      - delta: failure probability
+      - sigma: noise scale (sub-Gaussian)
+    """
+    def __init__(
+        self,
+        p: int,
+        k: int,
+        lam: float,
+        lam_perp: float,
+        B: float,
+        B_perp: float,
+        delta: float,
+        sigma: float,
+    ):
+        self.p = p
+        self.k = k
+        self.lam = lam
+        self.lam_perp = lam_perp
+        self.B = B
+        self.B_perp = B_perp
+        self.delta = delta
+        self.sigma = sigma
+
+        # Initialize Λ = diag([lam]*k, [lam_perp]*(p-k))
+        # and its inverse Vinv = Λ⁻¹
+        inv_diag = np.array([1/lam] * k + [1/lam_perp] * (p - k), dtype=float)
+        self.Vinv = np.diag(inv_diag)
+
+        # Store log-det of Λ for confidence radius updates
+        self.logdet_Lambda = k * np.log(lam) + (p - k) * np.log(lam_perp)
+        self.logdet_V = self.logdet_Lambda
+
+        # Initialize xty = V⁻¹·Xᵀy accumulator and time counter
+        self.xty = np.zeros(p)
+        self.t = 0
+
+        # Placeholders for last chosen context and estimate
+        self.last_arm = None
+        self.theta_hat = np.zeros(p)
+
+    def choose(self, x: np.ndarray) -> int:
+        """
+        Select an arm via optimism in face of uncertainty (OFUL).
+        x: array of shape (N, p) where each row is an arm's feature vector.
+        Returns the index of the chosen arm.
+        """
+        self.t += 1
+
+        # Compute ridge estimator θ̂_t = V⁻¹ · (Xᵀ y)
+        self.theta_hat = self.Vinv @ self.xty
+
+        # Compute confidence radius β_t
+        log_ratio = self.logdet_V - self.logdet_Lambda
+        radius = (
+            self.sigma * np.sqrt(2 * np.log(np.exp(log_ratio) / (self.delta**2)))
+            + np.sqrt(self.lam) * self.B
+            + np.sqrt(self.lam_perp) * self.B_perp
+        )
+
+        # Compute UCB scores for each arm: <θ̂, x> + radius · ||x||_{V⁻¹}
+        expected = x @ self.theta_hat  # shape (N,)
+        widths = np.sqrt(np.einsum("ni,ij,nj->n", x, self.Vinv, x))
+        ucb_scores = expected + radius * widths
+
+        # Pick any argmax at random
+        candidates = np.where(ucb_scores == np.max(ucb_scores))[0]
+        self.chosen_action = np.random.choice(candidates)
+        self.last_arm = x[self.chosen_action]
+        return self.chosen_action
+
+    def update(self, x: np.ndarray, r: float) -> None:
+        """
+        Update the model with observed reward.
+        x: the same (N, p) matrix passed to choose (not used directly here).
+        r: reward obtained from the chosen arm.
+        """
+        a = self.last_arm  # feature vector of the chosen arm
+
+        # Update log-det V: det(V + aaᵀ) = det(V) · (1 + aᵀ V⁻¹ a)
+        va = float(a @ self.Vinv @ a)
+        self.logdet_V += np.log(1 + va)
+
+        # Update V⁻¹ via Sherman–Morrison
+        self.Vinv = shermanMorrison(self.Vinv, a)
+
+        # Update xty accumulator
+        self.xty += r * a
+
+    def __get_param(self) -> Dict[str, np.ndarray]:
+        return {"param": self.theta_hat}
+
+class ESTRLowOFUL(ContextualBandit):
+    """
+    Explore-Subspace-Then-Refine (ESTR) + LowOFUL for bilinear bandits.
+
+    Stage 1 (exploration & subspace estimation):
+      - Select d1 and d2 well-conditioned arms from X and Z (approx via pivoted QR).
+      - For T1 rounds, pull pairs from the d1×d2 grid nearly uniformly.
+      - Build K_tilde with average rewards for each (i,j) in the grid.
+      - Estimate Θ_hat = X_sel^{-1} · K_tilde · (Z_sel^T)^{-1}.
+      - Compute SVD(Θ_hat) = U_hat S_hat V_hat^T and orthonormal complements U_perp_hat, V_perp_hat.
+
+    Stage 2 (refinement):
+      - Rotate arms by Qx=[U_hat U_perp_hat] and Qz=[V_hat V_perp_hat].
+      - Vectorize each pair (x', z') into a d1*d2-dimensional feature a where the first
+        k=(d1+d2)r-r^2 coordinates are from the signal blocks
+        (x_r z_r^T, x_perp z_r^T, x_r z_perp^T), and the last (d1-r)(d2-r) coordinates
+        are from the complementary block (x_perp z_perp^T).
+      - Run LowOFUL over these a-vectors.
+
+    Notes:
+      * Comments are in English; user-facing explanation can be provided separately.
+      * This class mirrors the BiRoLFLasso signature: choose(x: ndarray, y: ndarray) / update(x, y, r).
+    """
+
+    def __init__(
+        self,
+        d1: int,
+        d2: int,
+        r: int,
+        T1: int,
+        lam: float,
+        lam_perp: float,
+        B: float,
+        B_perp: float,
+        delta: float,
+        sigma: float,
+        random_state: int = 0,
+    ) -> None:
+        # Dimensions and hyperparameters
+        self.d1 = d1
+        self.d2 = d2
+        self.r = r
+        self.T1 = T1
+        self.random_state = random_state
+
+        # LowOFUL for Stage 2
+        p = d1 * d2
+        k = (d1 + d2) * r - (r * r)
+        self.low_oful = LowOFUL(
+            p=p,
+            k=k,
+            lam=lam,
+            lam_perp=lam_perp,
+            B=B,
+            B_perp=B_perp,
+            delta=delta,
+            sigma=sigma,
+        )
+
+        # Stage bookkeeping
+        self.t = 0
+        self._stage2_ready = False
+        self._rng = np.random.RandomState(random_state)
+
+        # Stage-1 selections and accumulators
+        self.X_sel_idx = None  # indices of selected d1 arms from X
+        self.Z_sel_idx = None  # indices of selected d2 arms from Z
+        self.X_sel = None      # (d1, d1)
+        self.Z_sel = None      # (d2, d2)
+        self.K_sum = None      # (d1, d2) sum of rewards
+        self.K_cnt = None      # (d1, d2) counts
+
+        # Subspace objects (set at end of Stage 1)
+        self.U_hat = None
+        self.V_hat = None
+        self.U_perp_hat = None
+        self.V_perp_hat = None
+        self.Qx = None  # (d1, d1) = [U_hat U_perp_hat]
+        self.Qz = None  # (d2, d2) = [V_hat V_perp_hat]
+
+        # Cache for last chosen pair in Stage 1
+        self._last_pair_stage1 = None  # (i_idx, j_idx) in selected grid
+
+        # Mapping for Stage 2: index -> (i, j)
+        self._pair_map = None
+
+    # ---------- Stage 1 helpers ----------
+    def _select_well_conditioned(self, X: np.ndarray, m: int) -> np.ndarray:
+        """Pick m rows of X that are approximately well-conditioned using pivoted QR."""
+        # Use QR with column pivoting on X^T to select rows.
+        # We choose the row indices corresponding to largest leverage.
+        QT, R, piv = np.linalg.qr(X.T, mode='reduced', pivoting=True)
+        return np.array(piv[:m], dtype=int)
+
+    def _init_stage1(self, X: np.ndarray, Z: np.ndarray) -> None:
+        """Initialize Stage-1 selections and accumulators from the current arm sets."""
+        if self.X_sel_idx is None:
+            self.X_sel_idx = self._select_well_conditioned(X, self.d1)
+            self.Z_sel_idx = self._select_well_conditioned(Z, self.d2)
+            self.X_sel = X[self.X_sel_idx, :]  # (d1, d1)
+            self.Z_sel = Z[self.Z_sel_idx, :]  # (d2, d2)
+            self.K_sum = np.zeros((self.d1, self.d2), dtype=float)
+            self.K_cnt = np.zeros((self.d1, self.d2), dtype=int)
+
+    def _schedule_stage1_pair(self) -> tuple:
+        """Choose the next (i,j) within the d1×d2 grid to balance counts."""
+        # Pull pairs as evenly as possible; break ties randomly.
+        min_cnt = np.min(self.K_cnt)
+        candidates = np.argwhere(self.K_cnt == min_cnt)
+        i, j = candidates[self._rng.randint(len(candidates))]
+        return int(i), int(j)
+
+    def _finalize_stage1(self) -> None:
+        """Estimate Θ_hat via the d1×d2 averages and compute subspaces."""
+        # Average reward matrix on the selected grid
+        K_tilde = np.divide(
+            self.K_sum,
+            np.maximum(self.K_cnt, 1),
+            out=np.zeros_like(self.K_sum, dtype=float),
+            where=(self.K_cnt > 0),
+        )
+        # Θ_hat = X^{-1} K_tilde (Z^T)^{-1}
+        X_inv = np.linalg.pinv(self.X_sel)
+        Z_inv_T = np.linalg.pinv(self.Z_sel.T)
+        Theta_hat = X_inv @ K_tilde @ Z_inv_T
+
+        # SVD and orthogonal complements
+        U, S, Vt = np.linalg.svd(Theta_hat, full_matrices=True)
+        self.U_hat = U[:, : self.r]
+        self.V_hat = Vt.T[:, : self.r]
+
+        # Orthonormal complements (span(U_hat)^⊥ and span(V_hat)^⊥)
+        # Use QR to complete to an orthonormal basis
+        Qx_full, _ = np.linalg.qr(np.concatenate([self.U_hat, np.eye(self.d1)], axis=1))
+        Qz_full, _ = np.linalg.qr(np.concatenate([self.V_hat, np.eye(self.d2)], axis=1))
+        self.U_perp_hat = Qx_full[:, self.r : self.r + (self.d1 - self.r)]
+        self.V_perp_hat = Qz_full[:, self.r : self.r + (self.d2 - self.r)]
+
+        # Rotation matrices
+        self.Qx = np.concatenate([self.U_hat, self.U_perp_hat], axis=1)  # (d1,d1)
+        self.Qz = np.concatenate([self.V_hat, self.V_perp_hat], axis=1)  # (d2,d2)
+
+        self._stage2_ready = True
+
+    # ---------- Stage 2 helpers ----------
+    @staticmethod
+    def _vecF(A: np.ndarray) -> np.ndarray:
+        """Vectorize by columns (Fortran order) to mimic vec(·)."""
+        return A.reshape(-1, order='F')
+
+    def _build_A(self, X_rot: np.ndarray, Z_rot: np.ndarray) -> tuple:
+        """
+        Build the vectorized arm set A and a map from index to (i,j).
+        X_rot: (M, d1)  Z_rot: (N, d2)
+        Returns (A_matrix, pair_map)
+        """
+        M, N = X_rot.shape[0], Z_rot.shape[0]
+        r = self.r
+        d1, d2 = self.d1, self.d2
+        k = (d1 + d2) * r - (r * r)
+        p = d1 * d2
+
+        A = np.zeros((M * N, p), dtype=float)
+        pair_map = []
+
+        for i in range(M):
+            x = X_rot[i]
+            x_r, x_perp = x[:r], x[r:]
+            for j in range(N):
+                z = Z_rot[j]
+                z_r, z_perp = z[:r], z[r:]
+                # Blocks
+                block1 = self._vecF(np.outer(x_r, z_r))                 # r×r
+                block2 = self._vecF(np.outer(x_perp, z_r))              # (d1-r)×r
+                block3 = self._vecF(np.outer(x_r, z_perp))              # r×(d2-r)
+                block4 = self._vecF(np.outer(x_perp, z_perp))           # (d1-r)×(d2-r)
+                # Concatenate in the order used by ESTR
+                a = np.concatenate([block1, block2, block3, block4], axis=0)
+                A[i * N + j, :] = a
+                pair_map.append((i, j))
+        return A, pair_map
+
+    # ---------- Public API ----------
+    def choose(self, x: np.ndarray, y: np.ndarray):
+        """
+        x: (M, d1) user-side arms, each row is a feature vector
+        y: (N, d2) item-side arms, each row is a feature vector
+        Returns the encoded action index i*N + j (consistent with BiRoLFLasso).
+        """
+        self.t += 1
+        # Stage 1 initialization
+        self._init_stage1(x, y)
+
+        if self.t <= self.T1:
+            # Stage 1: explore the d1×d2 grid
+            i_loc, j_loc = self._schedule_stage1_pair()
+            i_global = int(self.X_sel_idx[i_loc])
+            j_global = int(self.Z_sel_idx[j_loc])
+            self._last_pair_stage1 = (i_loc, j_loc)
+            return i_global * y.shape[0] + j_global
+
+        # If we just finished Stage 1, finalize subspaces
+        if not self._stage2_ready:
+            self._finalize_stage1()
+
+        # Stage 2: rotate arms and invoke LowOFUL
+        X_rot = x @ self.Qx  # (M, d1)
+        Y_rot = y @ self.Qz  # (N, d2)
+        A, pair_map = self._build_A(X_rot, Y_rot)
+        self._pair_map = pair_map
+
+        idx = self.low_oful.choose(A)
+        i, j = pair_map[idx]
+        self._last_pair_stage2 = (i, j)
+        return i * y.shape[0] + j
+
+    def update(self, x: np.ndarray, y: np.ndarray, r: float):
+        """Update algorithm with observed reward r for the previously chosen pair."""
+        if self.t <= self.T1:
+            # Accumulate for K_tilde
+            i_loc, j_loc = self._last_pair_stage1
+            self.K_sum[i_loc, j_loc] += r
+            self.K_cnt[i_loc, j_loc] += 1
+            return
+
+        # Stage 2 update: just forward to LowOFUL
+        # Rebuild A to conform to the current arm sets (choose() already cached pair_map)
+        X_rot = x @ self.Qx
+        Y_rot = y @ self.Qz
+        A, _ = self._build_A(X_rot, Y_rot)
+        self.low_oful.update(A, r)
+
+    def __get_param(self):
+        # Expose the subspace estimate and LowOFUL parameter
+        out = {
+            "U_hat": self.U_hat,
+            "V_hat": self.V_hat,
+            "U_perp_hat": self.U_perp_hat,
+            "V_perp_hat": self.V_perp_hat,
+        }
+        out.update(self.low_oful.__get_param())
+        return out
