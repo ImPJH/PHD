@@ -355,7 +355,6 @@ class RoLFLasso(ContextualBandit):
         p: float,
         delta: float,
         sigma: float,
-        random_state: int,
         explore: bool = False,
         init_explore: int = 0,
     ):
@@ -374,7 +373,6 @@ class RoLFLasso(ContextualBandit):
         self.matching = (
             dict()
         )  # history of rounds that the pseudo action and the chosen action matched
-        self.random_state = random_state
         self.explore = explore
         self.init_explore = init_explore
 
@@ -414,8 +412,7 @@ class RoLFLasso(ContextualBandit):
             [(1 / np.sqrt(self.t)) / (self.K - 1)] * self.K, dtype=float
         )
         chosen_dist[a_hat] = 1 - (1 / np.sqrt(self.t))
-
-        np.random.seed(self.random_state + self.t)
+        
         while (pseudo_action != chosen_action) and (count <= max_iter):
             ## Sample the pseudo action
             pseudo_action = np.random.choice(
@@ -577,7 +574,6 @@ class RoLFRidge(ContextualBandit):
         p: float,
         delta: float,
         sigma: float,
-        random_state: int,
         explore: bool = False,
         init_explore: int = 0,
     ):
@@ -594,7 +590,6 @@ class RoLFRidge(ContextualBandit):
         )  # history of rounds that the pseudo action and the chosen action matched
         self.Vinv_impute = self.p * np.identity(self.K)
         self.xty_impute = np.zeros(self.K)
-        self.random_state = random_state
         self.explore = explore
         self.init_explore = init_explore
 
@@ -628,8 +623,7 @@ class RoLFRidge(ContextualBandit):
             [(1 / np.sqrt(self.t)) / (self.K - 1)] * self.K, dtype=float
         )
         chosen_dist[a_hat] = 1 - (1 / np.sqrt(self.t))
-
-        np.random.seed(self.random_state + self.t)
+            
         while (pseudo_action != chosen_action) and (count <= max_iter):
             ## Sample the pseudo action
             pseudo_action = np.random.choice(
@@ -937,7 +931,6 @@ class BiRoLFLasso(ContextualBandit):
         M: int,
         N: int,
         sigma: float,
-        random_state: int,
         delta: float,
         p: float,
         p1: float = None,
@@ -962,7 +955,6 @@ class BiRoLFLasso(ContextualBandit):
         self.p1 = p1 if p1 is not None else p
         self.p2 = p2 if p2 is not None else p
         
-        self.random_state = random_state
         self.sigma = sigma
 
         self.action_i_history = []
@@ -1032,8 +1024,6 @@ class BiRoLFLasso(ContextualBandit):
             dtype=float,
         )
         chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
-
-        np.random.seed(self.random_state + self.t)
 
         pseudo_action_i = -1
         chosen_action_i = -2
@@ -1261,7 +1251,6 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         M: int,
         N: int,
         sigma: float,
-        random_state: int,
         delta: float,
         p: float,
         p1: float = None,
@@ -1286,7 +1275,6 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         self.p1 = p1 if p1 is not None else p
         self.p2 = p2 if p2 is not None else p
         
-        self.random_state = random_state
         self.sigma = sigma
 
         self.action_i_history = []
@@ -1456,8 +1444,6 @@ class BiRoLFLasso_FISTA(ContextualBandit):
             dtype=float,
         )
         chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
-
-        np.random.seed(self.random_state + self.t)
 
         pseudo_action_i = -1
         chosen_action_i = -2
@@ -1824,14 +1810,12 @@ class ESTRLowOFUL(ContextualBandit):
         B_perp: float,
         delta: float,
         sigma: float,
-        random_state: int = 0,
     ) -> None:
         # Dimensions and hyperparameters
         self.d1 = d1
         self.d2 = d2
         self.r = r
         self.T1 = T1
-        self.random_state = random_state
 
         # LowOFUL for Stage 2
         p = d1 * d2
@@ -1850,7 +1834,6 @@ class ESTRLowOFUL(ContextualBandit):
         # Stage bookkeeping
         self.t = 0
         self._stage2_ready = False
-        self._rng = np.random.RandomState(random_state)
 
         # Stage-1 selections and accumulators
         self.X_sel_idx = None  # indices of selected d1 arms from X
@@ -1898,7 +1881,7 @@ class ESTRLowOFUL(ContextualBandit):
         # Pull pairs as evenly as possible; break ties randomly.
         min_cnt = np.min(self.K_cnt)
         candidates = np.argwhere(self.K_cnt == min_cnt)
-        i, j = candidates[self._rng.randint(len(candidates))]
+        i, j = candidates[np.random.randint(len(candidates))]
         return int(i), int(j)
 
     def _finalize_stage1(self) -> None:
