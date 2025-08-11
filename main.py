@@ -393,9 +393,7 @@ def bilinear_run_trial(
     exp_rewards_mat = exp_rewards_mat / np.max(np.abs(exp_rewards_mat))
 
     if (
-        isinstance(agent, LinUCB)
-        or isinstance(agent, LinTS)
-        or isinstance(agent, DRLassoBandit)
+        isinstance(agent, (LinUCB,LinTS,DRLassoBandit,ESTRLowOFUL))
     ):
         data_x = X.T
         data_y = Y.T
@@ -542,7 +540,7 @@ def bilinear_show_result(
 ):
     fig, ax = plt.subplots(figsize=figsize)
 
-    colors = ["blue", "orange", "green", "red", "purple", "black", "brown", "olive"]
+    colors = ["blue", "orange", "green", "red", "purple", "black", "brown", "olive", "cyan"]
     period = horizon // 10
 
     z_init = len(colors)
