@@ -16,6 +16,7 @@ AGENT_DICT = {
     "rolf_ridge": "RoLF-Ridge (Kim & Park)",
     "birolf_lasso": "BiRoLF-Lasso (Ours)",
     "birolf_lasso_fista": "BiRoLF-Lasso-FISTA (Ours)",
+    "estr_lowoful": "ESTR+LowOFUL",
     "dr_lasso": "DRLasso",
 }
 
@@ -293,6 +294,8 @@ def bilinear_run_trial(
                 random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
+                p1=cfg.p1,
+                p2=cfg.p2,
                 explore=cfg.explore,
                 init_explore=exp_map[cfg.init_explore],
                 theoretical_init_explore=False,
@@ -305,6 +308,8 @@ def bilinear_run_trial(
                 random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
+                p1=cfg.p1,
+                p2=cfg.p2,
                 theoretical_init_explore=False,
             )
 
@@ -317,6 +322,8 @@ def bilinear_run_trial(
                 random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
+                p1=cfg.p1,
+                p2=cfg.p2,
                 explore=cfg.explore,
                 init_explore=exp_map[cfg.init_explore],
                 theoretical_init_explore=False,
@@ -329,8 +336,25 @@ def bilinear_run_trial(
                 random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
+                p1=cfg.p1,
+                p2=cfg.p2,
                 theoretical_init_explore=False,
             )
+            
+    elif agent_type == "estr_lowoful":
+        agent = ESTRLowOFUL(
+            d1=d_x,
+            d2=d_y,
+            r=getattr(cfg, 'estr_r', min(d_x, d_y)),
+            T1=getattr(cfg, 'estr_T1', M * N),
+            lam=getattr(cfg, 'estr_lam', cfg.p),
+            lam_perp=getattr(cfg, 'estr_lam_perp', cfg.p),
+            B=getattr(cfg, 'estr_B', 1.0),
+            B_perp=getattr(cfg, 'estr_B_perp', 1.0),
+            delta=cfg.delta,
+            sigma=noise_std,
+            random_state=random_state_,
+        )
     
     ## sample features
     ## X_star: (d_x_star, M)
@@ -468,7 +492,7 @@ def bilinear_run(
             distribution=noise_dist, size=1, std=noise_std, random_state=random_state_
         )
 
-        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA)):
+        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA, ESTRLowOFUL)):
             chosen_action = agent.choose(x, y)
         elif isinstance(agent, ContextualBandit):
             chosen_action = agent.choose(z)
@@ -502,7 +526,7 @@ def bilinear_run(
         regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
 
         ## update the agent
-        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA)):
+        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA, ESTRLowOFUL)):
             agent.update(x=x, y=y, r=chosen_reward)
         elif isinstance(agent, ContextualBandit):
             agent.update(x=z, r=chosen_reward)
@@ -603,6 +627,7 @@ if __name__ == "__main__":
         "rolf_lasso",
         "birolf_lasso",
         "birolf_lasso_fista",
+        "estr_lowoful",
         "rolf_ridge",
         "dr_lasso",
         "linucb",
@@ -613,7 +638,6 @@ if __name__ == "__main__":
     for _agent in AGENTS:
         for _trial in range(cfg.trials):
             TRIALS_AGENTS.append((_trial,_agent))
-        
     
     case = cfg.case
 

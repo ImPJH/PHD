@@ -5,8 +5,7 @@ from calculate_alpha import *
 import scipy
 from sklearn.linear_model import Lasso, LinearRegression
 import statsmodels.api as sm
-from typing import Callable
-
+from typing import Callable, Dict
 
 #############################################################################
 ############################ Multi-Armed Bandits ############################
@@ -941,6 +940,8 @@ class BiRoLFLasso(ContextualBandit):
         random_state: int,
         delta: float,
         p: float,
+        p1: float = None,
+        p2: float = None,
         explore: bool = False,
         init_explore: int = 0,
         theoretical_init_explore: bool = False,
@@ -955,9 +956,12 @@ class BiRoLFLasso(ContextualBandit):
         self.M = M
         self.N = N
         self.delta = delta
+        
         self.p = p
-        self.p1 = p
-        self.p2 = p
+        # p1과 p2가 별도로 지정되지 않으면 p 값을 사용
+        self.p1 = p1 if p1 is not None else p
+        self.p2 = p2 if p2 is not None else p
+        
         self.random_state = random_state
         self.sigma = sigma
 
@@ -1250,6 +1254,7 @@ class BiRoLFLasso(ContextualBandit):
 
 
 
+
 class BiRoLFLasso_FISTA(ContextualBandit):
     def __init__(
         self,
@@ -1259,6 +1264,8 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         random_state: int,
         delta: float,
         p: float,
+        p1: float = None,
+        p2: float = None,
         explore: bool = False,
         init_explore: int = 0,
         theoretical_init_explore: bool = False,
@@ -1273,9 +1280,12 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         self.M = M
         self.N = N
         self.delta = delta
+        
         self.p = p
-        self.p1 = p
-        self.p2 = p
+        # p1과 p2가 별도로 지정되지 않으면 p 값을 사용
+        self.p1 = p1 if p1 is not None else p
+        self.p2 = p2 if p2 is not None else p
+        
         self.random_state = random_state
         self.sigma = sigma
 
@@ -1308,6 +1318,7 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         # FISTA hyperparameters
         self.fista_max_iter = 200
         self.fista_tol = 1e-6
+    
     # ---------- FISTA utilities (for imputation & main) ----------
     @staticmethod
     def _soft_threshold(Z: np.ndarray, tau: float) -> np.ndarray:
@@ -1868,7 +1879,8 @@ class ESTRLowOFUL(ContextualBandit):
         """Pick m rows of X that are approximately well-conditioned using pivoted QR."""
         # Use QR with column pivoting on X^T to select rows.
         # We choose the row indices corresponding to largest leverage.
-        QT, R, piv = np.linalg.qr(X.T, mode='reduced', pivoting=True)
+        from scipy.linalg import qr
+        QT, R, piv = qr(X.T, mode='economic', pivoting=True)
         return np.array(piv[:m], dtype=int)
 
     def _init_stage1(self, X: np.ndarray, Z: np.ndarray) -> None:
