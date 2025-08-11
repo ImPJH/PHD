@@ -547,6 +547,7 @@ def bilinear_show_result(
 # Function to run trials for a single agent
 def bilinear_run_agent(trial_agent):
     now_trial, agent_type = trial_agent
+    np.random.seed(cfg.seed + (513 * now_trial))
 
     start = time.perf_counter()
 
@@ -562,7 +563,6 @@ def bilinear_run_agent(trial_agent):
         N=cfg.arm_y,
         noise_std=cfg.reward_std,
         case=cfg.case,
-        random_state=cfg.seed + (513 * now_trial),
         verbose=True,
         fname=f"Case_{cfg.case}_Agent_{agent_type}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
     )
