@@ -54,7 +54,6 @@ def bilinear_feature_generator(
     d_y: int,
     M: int,
     N: int,
-    random_state: int,
 ):
     ## sample the true, observable, and unobservable features
     d_u = d_x_star - d_x  # dimension of unobserved feature(x)
@@ -65,7 +64,6 @@ def bilinear_feature_generator(
     ## For feature x
     if case in [1, 2, 3]:
         ## X is Default case
-        np.random.seed(random_state)
         X_star = np.random.multivariate_normal(
             mean=np.zeros(d_x_star), cov=np.eye(d_x_star), size=M
         ).T  # (d_x_star, M)
@@ -79,7 +77,6 @@ def bilinear_feature_generator(
         ## ~! When observable feature dominates !~
 
         ## R(U) ⊆ R(X)
-        np.random.seed(random_state + 17)
         # First generate X
         X = np.random.multivariate_normal(
             mean=np.zeros(d_x), cov=np.eye(d_x), size=M
@@ -102,7 +99,6 @@ def bilinear_feature_generator(
         ## ~! When the unobservable feature dominates !~
 
         ## R(X) ⊆ R(U)
-        np.random.seed(random_state + 31)
         # First generate U
         U = np.random.multivariate_normal(
             mean=np.zeros(d_u), cov=np.eye(d_u), size=M
@@ -123,7 +119,6 @@ def bilinear_feature_generator(
     ## For feature y,
     if case in [1, 4, 7]:
         ## Y is Default case
-        np.random.seed(random_state)
         Y_star = np.random.multivariate_normal(
             mean=np.zeros(d_y_star), cov=np.eye(d_y_star), size=N
         ).T  # (d_y_star, N)
@@ -137,7 +132,6 @@ def bilinear_feature_generator(
         ## ~! When observable feature dominates !~
 
         ## R(V) ⊆ R(Y)
-        np.random.seed(random_state + 17)
 
         # First generate Y
         Y = np.random.multivariate_normal(
@@ -161,7 +155,6 @@ def bilinear_feature_generator(
         ## ~! When the unobservable feature dominates !~
 
         ## R(Y) ⊆ R(V)
-        np.random.seed(random_state + 31)
         # First generate V
         V = np.random.multivariate_normal(
             mean=np.zeros(d_v), cov=np.eye(d_v), size=N
@@ -194,7 +187,6 @@ def bilinear_run_trial(
     N: int,
     noise_std: float,
     case: int,
-    random_state: int,
     verbose: bool,
     fname: str,
 ):
@@ -214,11 +206,6 @@ def bilinear_run_trial(
     regret_container = np.zeros(1, dtype=object)
     
     ### Setting random state (Manual Folded)
-    random_state_ = random_state
-    # if random_state is not None:
-    #     random_state_ = random_state + (513 * trial)
-    # else:
-    #     random_state_ = None
 
     ### Select agent (Manual Folded)
     if agent_type == "linucb":
@@ -244,7 +231,6 @@ def bilinear_run_trial(
                 p=cfg.p,
                 delta=cfg.delta,
                 sigma=noise_std,
-                random_state=random_state_,
                 explore=cfg.explore,
                 init_explore=exp_map[cfg.init_explore],
             )
@@ -255,7 +241,6 @@ def bilinear_run_trial(
                 p=cfg.p,
                 delta=cfg.delta,
                 sigma=noise_std,
-                random_state=random_state_,
             )
 
     elif agent_type == "rolf_ridge":
@@ -266,7 +251,6 @@ def bilinear_run_trial(
                 p=cfg.p,
                 delta=cfg.delta,
                 sigma=noise_std,
-                random_state=random_state_,
                 explore=cfg.explore,
                 init_explore=exp_map[cfg.init_explore],
             )
@@ -277,7 +261,6 @@ def bilinear_run_trial(
                 p=cfg.p,
                 delta=cfg.delta,
                 sigma=noise_std,
-                random_state=random_state_,
             )
 
     elif agent_type == "dr_lasso":
@@ -291,7 +274,6 @@ def bilinear_run_trial(
                 M=M,
                 N=N,
                 sigma=noise_std,
-                random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
                 p1=cfg.p1,
@@ -305,7 +287,6 @@ def bilinear_run_trial(
                 M=M,
                 N=N,
                 sigma=noise_std,
-                random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
                 p1=cfg.p1,
@@ -319,7 +300,6 @@ def bilinear_run_trial(
                 M=M,
                 N=N,
                 sigma=noise_std,
-                random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
                 p1=cfg.p1,
@@ -333,7 +313,6 @@ def bilinear_run_trial(
                 M=M,
                 N=N,
                 sigma=noise_std,
-                random_state=random_state_,
                 delta=cfg.delta,
                 p=cfg.p,
                 p1=cfg.p1,
@@ -353,7 +332,6 @@ def bilinear_run_trial(
             B_perp=getattr(cfg, 'estr_B_perp', 1.0),
             delta=cfg.delta,
             sigma=noise_std,
-            random_state=random_state_,
         )
     
     ## sample features
@@ -369,7 +347,6 @@ def bilinear_run_trial(
         d_y=d_y,
         M=M,
         N=N,
-        random_state=random_state_ + 1,
     )
 
     # ## Z_star: (d_x_star * d_y_star, MN): col = (1,1), (1,2), ... , (1,N), (2,1),  ... , ... , (M,1), (M,2), ... , (M,N)
@@ -385,7 +362,6 @@ def bilinear_run_trial(
         bound=cfg.param_bound,
         bound_type=cfg.param_bound_type,
         uniform_rng=cfg.param_uniform_rng,
-        random_state=random_state_,
     )
 
     ## (M,N) matrix with the maximum absolute value does not exceed 1
@@ -435,7 +411,6 @@ def bilinear_run_trial(
         y=data_y,
         noise_dist=cfg.reward_dist,
         noise_std=noise_std,
-        random_state=random_state_,
         verbose=verbose,
         fname=fname,
     )
@@ -454,7 +429,6 @@ def bilinear_run(
     y: np.ndarray,
     noise_dist: str,
     noise_std: float,
-    random_state: int,
     verbose: bool,
     fname: str,
 ):
@@ -471,11 +445,6 @@ def bilinear_run(
     z = np.kron(x, y)
 
     for t in bar:
-        if random_state is not None:
-            random_state_ = random_state + int(113 * t)
-        else:
-            random_state_ = None
-
         # if t == 0:
         #     print(f"Number of actions : {x.shape[0]}\tReward range : [{np.amin(exp_rewards):.5f}, {np.amax(exp_rewards):.5f}]")
 
@@ -487,7 +456,7 @@ def bilinear_run(
 
         ## choose the best action
         noise = subgaussian_noise(
-            distribution=noise_dist, size=1, std=noise_std, random_state=random_state_
+            distribution=noise_dist, size=1, std=noise_std
         )
 
         if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA, ESTRLowOFUL)):
@@ -640,7 +609,7 @@ if __name__ == "__main__":
     case = cfg.case
 
     # Parallel execution using ProcessPoolExecutor
-    with ProcessPoolExecutor(max_workers=8)  as executor:
+    with ProcessPoolExecutor(max_workers=16)  as executor:
         results = executor.map(bilinear_run_agent, TRIALS_AGENTS)
 
     # Collect results
