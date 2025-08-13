@@ -6,6 +6,12 @@ import scipy
 from sklearn.linear_model import Lasso, LinearRegression
 import statsmodels.api as sm
 from typing import Callable, Dict
+import time
+from collections import defaultdict
+
+# Global timing tracking variables - will be set by main.py
+# TIMING_DATA = None
+# shared_timing_data = None
 
 #############################################################################
 ############################ Multi-Armed Bandits ############################
@@ -1045,18 +1051,18 @@ class BiRoLFLasso(ContextualBandit):
         while (pseudo_action_j != chosen_action_j) and (count2 <= max_iter2):
             ## Sample the pseudo action
             pseudo_action_j = np.random.choice(
-                [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
+                [j for j in range(self.N)], size=1, replace=False, p=pseudo_dist_y
             ).item()
 
             ## Sample the chosen action
             chosen_action_j = np.random.choice(
-                [i for i in range(self.N)], size=1, replace=False, p=chosen_dist_y
+                [j for j in range(self.N)], size=1, replace=False, p=chosen_dist_y
             ).item()
 
             count2 += 1
 
-        pseudo_action = pseudo_action_i * self.N + pseudo_action_j
-        chosen_action = chosen_action_i * self.N + chosen_action_j
+        pseudo_action = ij_to_action(pseudo_action_i, pseudo_action_j, self.N)
+        chosen_action = ij_to_action(chosen_action_i, chosen_action_j, self.N)
 
         # add to the history
         self.action_i_history.append(chosen_action_i)
@@ -1081,17 +1087,17 @@ class BiRoLFLasso(ContextualBandit):
         # lam_impute = self.p
         # lam_main = self.p
 
-        kappa_x = np.power(np.sum(np.power(np.max(np.abs(x), axis=1), 4)), 0.25)
-        kappa_y = np.power(np.sum(np.power(np.max(np.abs(y), axis=1), 4)), 0.25)
+        kappa_x = np.max(np.abs(x))
+        kappa_y = np.max(np.abs(y))
 
         lam_impute = (
             2
             * self.sigma
             * kappa_x
             * kappa_y
-            * np.sqrt(2 * self.t * np.log(2 * self.M * self.N / self.delta))
+            * np.sqrt(2 * self.t * np.log(2 * self.M * self.N * self.t**2 / self.delta))
         )
-        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p**2)) * np.sqrt(
+        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p1 * self.p2)) * np.sqrt(
             2 * self.t * np.log(2 * self.M * self.N * self.t**2 / self.delta)
         )
 
@@ -1121,11 +1127,13 @@ class BiRoLFLasso(ContextualBandit):
                         chosen_i, chosen_j = action_to_ij(chosen, self.N)
                         new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
                         new_pseudo_rewards[chosen_i, chosen_j] += (
-                            (1 / self.p) ** 2
-                        ) * (
-                            reward
-                            - (data_x[chosen_i, :] @ Phi_impute @ data_y[chosen_j, :])
-                        ).T
+                            (1 / (self.p1 * self.p2))
+                            * (
+                                reward
+                                - (data_x[chosen_i, :] @ Phi_impute @ data_y[chosen_j, :].T)
+                            )
+                        )
+
                         # overwrite the value
                         self.matching[key] = (
                             matched,
@@ -1139,7 +1147,7 @@ class BiRoLFLasso(ContextualBandit):
             ## compute the pseudo rewards for the current data
             pseudo_rewards = x @ Phi_impute @ y.T
             chosen_i, chosen_j = action_to_ij(self.chosen_action, self.N)
-            pseudo_rewards[chosen_i, chosen_j] += ((1 / self.p) ** 2) * (
+            pseudo_rewards[chosen_i, chosen_j] += (1 / (self.p1 * self.p2)) * (
                 r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j, :].T)
             )
             self.matching[self.t] = (
@@ -1152,7 +1160,10 @@ class BiRoLFLasso(ContextualBandit):
             )
 
             ## compute the main estimator
-
+            
+            # Time the lasso optimization for BiRoLFLasso
+            optimization_start_time = time.time()
+            
             main_prev_shape = self.main_prev.shape
             Phi_main = scipy.optimize.minimize(
                 self.__main_loss,
@@ -1161,6 +1172,22 @@ class BiRoLFLasso(ContextualBandit):
                 method="SLSQP",
                 options={"disp": False, "ftol": 1e-6, "maxiter": 10000},
             ).x.reshape(main_prev_shape)
+            
+            optimization_end_time = time.time()
+            optimization_time = optimization_end_time - optimization_start_time
+            
+            # Record timing data for ablation study
+            if hasattr(self, '_timing_data') and self._timing_data is not None:
+                agent_name = self.__class__.__name__
+                trial = getattr(self, '_trial', 0)
+                
+                # Initialize nested dict structure if needed
+                if agent_name not in self._timing_data:
+                    self._timing_data[agent_name] = {}
+                if trial not in self._timing_data[agent_name]:
+                    self._timing_data[agent_name][trial] = []
+                    
+                self._timing_data[agent_name][trial].append(optimization_time)
 
             ## update the Phi_hat
             self.Phi_hat = Phi_main
@@ -1242,9 +1269,6 @@ class BiRoLFLasso(ContextualBandit):
     def __get_param(self):
         return {"param": self.Phi_hat, "impute": self.Phi_check}
 
-
-
-
 class BiRoLFLasso_FISTA(ContextualBandit):
     def __init__(
         self,
@@ -1262,415 +1286,744 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         self.t = 0
         self.explore = explore
         self.init_explore = init_explore
-        ## TODO: make theoretical C_e
         if theoretical_init_explore:
-            # self.init_explore = ((8*M*N)**3)
             pass
         self.M = M
         self.N = N
         self.delta = delta
-        
         self.p = p
-        # p1과 p2가 별도로 지정되지 않으면 p 값을 사용
         self.p1 = p1 if p1 is not None else p
         self.p2 = p2 if p2 is not None else p
-        
         self.sigma = sigma
-
         self.action_i_history = []
         self.action_j_history = []
         self.reward_history = []
-
         self.matching = dict()
         self.Phi_hat = np.zeros((self.M, self.N))
         self.Phi_check = np.zeros((self.M, self.N))
         self.impute_prev = np.zeros((self.M, self.N))
         self.main_prev = np.zeros((self.M, self.N))
+        
+        # FISTA 하이퍼파라미터
+        self.fista_max_iter = 500
+        self.fista_tol = 1e-7
 
-        # --- Caches for fast proximal updates (FISTA) ---
-        # We aggregate per static arms (i,j) to compute exact gradients quickly.
-        self._static_arms_initialized = False
-        self.X_static = None   # (M, d_x) copy of x at first update
-        self.Y_static = None   # (N, d_y) copy of y at first update
-        # Per-arm matrices A_i = x_i x_i^T, B_j = y_j y_j^T
-        self.A_i = None        # list of length M, each (d_x, d_x)
-        self.B_j = None        # list of length N, each (d_y, d_y)
-        # Pair counts and reward sums
-        self.Ncnt = np.zeros((self.M, self.N), dtype=int)
-        self.Ssum = np.zeros((self.M, self.N), dtype=float)
-        # For each i, Bbar_i = sum_j Ncnt[i,j] * B_j
-        self.Bbar_i = None     # list of length M, each (d_y, d_y)
-        # Aggregated C_sum = sum_{i,j} Ssum[i,j] * x_i y_j^T  (shape (M,N) in Φ-space)
-        self.C_sum = np.zeros((self.M, self.N), dtype=float)
-
-        # FISTA hyperparameters
-        self.fista_max_iter = 200
-        self.fista_tol = 1e-6
-    
-    # ---------- FISTA utilities (for imputation & main) ----------
-    @staticmethod
-    def _soft_threshold(Z: np.ndarray, tau: float) -> np.ndarray:
-        """Elementwise soft-thresholding for ℓ1 prox."""
+    def _soft_threshold(self, Z: np.ndarray, tau: float) -> np.ndarray:
         return np.sign(Z) * np.maximum(np.abs(Z) - tau, 0.0)
 
-    @staticmethod
-    def _spectral_norm(M: np.ndarray, n_iter: int = 20) -> float:
-        """Power iteration approximation of spectral norm ||M||_2."""
-        if M.size == 0:
-            return 0.0
-        v = np.random.randn(M.shape[1])
-        v /= (np.linalg.norm(v) + 1e-12)
-        for _ in range(n_iter):
-            v = M.T @ (M @ v)
-            nv = np.linalg.norm(v) + 1e-12
-            v /= nv
-        return float(np.sqrt(v @ (M.T @ (M @ v))))
-
-    def _init_static_arms_if_needed(self, x: np.ndarray, y: np.ndarray) -> None:
-        """Initialize per-arm caches A_i, B_j, Bbar_i and store static copies of x,y at first update."""
-        if self._static_arms_initialized:
-            return
-        self.X_static = x.copy()
-        self.Y_static = y.copy()
-        # Build A_i and B_j from static arms
-        self.A_i = [np.outer(self.X_static[i, :], self.X_static[i, :]) for i in range(self.M)]
-        self.B_j = [np.outer(self.Y_static[j, :], self.Y_static[j, :]) for j in range(self.N)]
-        # Initialize Bbar_i as zeros
-        self.Bbar_i = [np.zeros((self.Y_static.shape[1], self.Y_static.shape[1]), dtype=float) for _ in range(self.M)]
-        self._static_arms_initialized = True
-
-    def _update_impute_caches(self, i: int, j: int, r: float) -> None:
-        """Incremental updates for imputation aggregates given a new observation (i,j,r)."""
-        self.Ncnt[i, j] += 1
-        self.Ssum[i, j] += r
-        # Bbar_i[i] += B_j
-        self.Bbar_i[i] += self.B_j[j]
-        # C_sum += r * x_i y_j^T
-        self.C_sum += np.outer(self.X_static[i, :], self.Y_static[j, :]) * r
-
-    def _grad_impute(self, Phi: np.ndarray) -> np.ndarray:
-        """Exact gradient: 2 * (sum_i A_i Φ Bbar_i[i] - C_sum)."""
-        G = -2.0 * self.C_sum
-        for i in range(self.M):
-            G += 2.0 * (self.A_i[i] @ Phi @ self.Bbar_i[i])
-        return G
-
-    def _impute_lipschitz_upper(self) -> float:
-        """Conservative upper bound of Lipschitz constant: 2 * sum_i ||A_i||_2 * ||Bbar_i[i]||_2."""
-        total = 0.0
-        for i in range(self.M):
-            LA = self._spectral_norm(self.A_i[i])
-            LB = self._spectral_norm(self.Bbar_i[i]) if np.any(self.Bbar_i[i]) else 0.0
-            total += LA * LB
-        return 2.0 * max(total, 1e-12)
-
-    def _fista_l1(self, Phi0: np.ndarray, lam: float, grad_fn, L_bound: float, max_iter: int = None, tol: float = None) -> np.ndarray:
-        """Generic FISTA for min_Φ g(Φ) + lam ||Φ||_1 with gradient oracle grad_fn and Lipschitz bound L_bound."""
-        if max_iter is None:
-            max_iter = self.fista_max_iter
-        if tol is None:
-            tol = self.fista_tol
-        L = max(L_bound, 1e-12)
-        eta = 1.0 / L
-        Y = Phi0.copy()
+    def _fista_l1_backtracking(
+        self,
+        Phi0: np.ndarray,
+        lam: float,
+        loss_fn: Callable,
+        grad_fn: Callable,
+    ) -> np.ndarray:
+        """
+        Backtracking Line Search를 적용하여 안정성과 수렴 속도를 개선한 FISTA 솔버.
+        L을 미리 계산할 필요 없이 동적으로 스텝 사이즈를 조절합니다.
+        """
+        L = 1.0  # 초기 L 값
+        beta = 1.5  # L을 증가시킬 비율
+        
         Phi = Phi0.copy()
-        t_par = 1.0
-        for _ in range(max_iter):
-            G = grad_fn(Y)
-            Phi_next = self._soft_threshold(Y - eta * G, lam * eta)
-            t_next = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * t_par * t_par))
-            Y = Phi_next + ((t_par - 1.0) / t_next) * (Phi_next - Phi)
-            if np.linalg.norm(Phi_next - Phi, ord='fro') <= tol * max(1.0, np.linalg.norm(Phi, ord='fro')):
+        Y = Phi0.copy()
+        t_k = 1.0
+
+        for _ in range(self.fista_max_iter):
+            grad_Y = grad_fn(Y)
+            loss_Y = loss_fn(Y)
+
+            # Backtracking loop to find a suitable L
+            while True:
+                eta = 1.0 / L
+                Phi_next = self._soft_threshold(Y - eta * grad_Y, lam * eta)
+                
+                # 백트래킹 조건 확인: f(x_next) <= f(y) + <∇f(y), x_next - y> + (L/2) * ||x_next - y||^2
+                loss_next = loss_fn(Phi_next)
+                quadratic_approx = loss_Y + np.sum(grad_Y * (Phi_next - Y)) + (L / 2.0) * np.sum((Phi_next - Y) ** 2)
+
+                if loss_next <= quadratic_approx:
+                    break  # 적절한 L을 찾았으므로 loop 탈출
+                
+                L *= beta # 스텝 사이즈가 너무 컸으므로 L을 증가시키고 재시도
+            
+            # FISTA 모멘텀 업데이트
+            t_k_next = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * t_k**2))
+            Y = Phi_next + ((t_k - 1.0) / t_k_next) * (Phi_next - Phi)
+            
+            # 수렴 조건 확인
+            if np.linalg.norm(Phi_next - Phi) < self.fista_tol * (1 + np.linalg.norm(Phi)):
                 Phi = Phi_next
                 break
+            
             Phi = Phi_next
-            t_par = t_next
+            t_k = t_k_next
+
         return Phi
 
     def choose(self, x: np.ndarray, y: np.ndarray):
-        # x : (M, M) augmented feature matrix where each row denotes the augmented features
-        # y : (N, N) augmented feature matrix where each row denotes the augmented features
-
+        # choose 메소드는 BiRoLFLasso와 동일하게 유지
         self.t += 1
-
-        ## compute the \hat{a}_t
-        if self.explore:
-            if self.t > self.init_explore:
-                decision_rule = x @ self.Phi_hat @ y.T
-                # print(f"Decision rule : {decision_rule}")
-                a_hat = np.argmax(decision_rule)
-            else:
-                a_hat = np.random.choice(np.arange(self.M * self.N))
+        if self.explore and self.t <= self.init_explore:
+            a_hat = np.random.choice(np.arange(self.M * self.N))
         else:
-            ## decision_rule : (M,N)
             decision_rule = x @ self.Phi_hat @ y.T
-            # print(f"Decision rule : {decision_rule}")
             a_hat = np.argmax(decision_rule)
-
         i_hat, j_hat = action_to_ij(a_hat, self.N)
-
         self.a_hat = a_hat
-        self.i_hat = i_hat
-        self.j_hat = j_hat
-
-        ## sampling actions
-        count1 = 0
-        count2 = 0
-
-        ## ~! rho_t !~ ##
-        max_iter1 = int(
-            np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p1))
-        )
-        max_iter2 = int(
-            np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p2))
-        )
-
-        ## ~! phi_t !~ ##
-        pseudo_dist_x = np.array([(1 - self.p1) / (self.M - 1)] * self.M, dtype=float)
-        pseudo_dist_x[i_hat] = self.p1
-
-        pseudo_dist_y = np.array([(1 - self.p2) / (self.N - 1)] * self.N, dtype=float)
-        pseudo_dist_y[j_hat] = self.p2
-
-        ## ~! epsilon(sqrt(t))-greedy ~! ##
-        chosen_dist_x = np.array(
-            [(1 / np.sqrt(self.t)) / (self.M - 1)] * self.M,
-            dtype=float,
-        )
-        chosen_dist_x[i_hat] = 1 - (1 / np.sqrt(self.t))
-
-        chosen_dist_y = np.array(
-            [(1 / np.sqrt(self.t)) / (self.N - 1)] * self.N,
-            dtype=float,
-        )
-        chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
-
-        pseudo_action_i = -1
-        chosen_action_i = -2
-        while (pseudo_action_i != chosen_action_i) and (count1 <= max_iter1):
-            ## Sample the pseudo action
-            pseudo_action_i = np.random.choice(
-                [i for i in range(self.M)], size=1, replace=False, p=pseudo_dist_x
-            ).item()
-
-            ## Sample the chosen action
-            chosen_action_i = np.random.choice(
-                [i for i in range(self.M)], size=1, replace=False, p=chosen_dist_x
-            ).item()
-
+        max_iter1 = int(np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p1)))
+        max_iter2 = int(np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p2)))
+        pseudo_dist_x = np.full(self.M, (1 - self.p1) / (self.M - 1)); pseudo_dist_x[i_hat] = self.p1
+        chosen_dist_x = np.full(self.M, (1 / np.sqrt(self.t)) / (self.M - 1)); chosen_dist_x[i_hat] = 1 - (1 / np.sqrt(self.t))
+        pseudo_dist_y = np.full(self.N, (1 - self.p2) / (self.N - 1)); pseudo_dist_y[j_hat] = self.p2
+        chosen_dist_y = np.full(self.N, (1 / np.sqrt(self.t)) / (self.N - 1)); chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
+        pseudo_action_i, chosen_action_i = -1, -2; count1 = 0
+        while pseudo_action_i != chosen_action_i and count1 <= max_iter1:
+            pseudo_action_i = np.random.choice(self.M, p=pseudo_dist_x)
+            chosen_action_i = np.random.choice(self.M, p=chosen_dist_x)
             count1 += 1
-
-        pseudo_action_j = -1
-        chosen_action_j = -2
-        while (pseudo_action_j != chosen_action_j) and (count2 <= max_iter2):
-            ## Sample the pseudo action
-            pseudo_action_j = np.random.choice(
-                [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
-            ).item()
-
-            ## Sample the chosen action
-            chosen_action_j = np.random.choice(
-                [i for i in range(self.N)], size=1, replace=False, p=chosen_dist_y
-            ).item()
-
+        pseudo_action_j, chosen_action_j = -1, -2; count2 = 0
+        while pseudo_action_j != chosen_action_j and count2 <= max_iter2:
+            pseudo_action_j = np.random.choice(self.N, p=pseudo_dist_y)
+            chosen_action_j = np.random.choice(self.N, p=chosen_dist_y)
             count2 += 1
-
-        pseudo_action = pseudo_action_i * self.N + pseudo_action_j
-        chosen_action = chosen_action_i * self.N + chosen_action_j
-
-        # add to the history
+        self.pseudo_action = ij_to_action(pseudo_action_i, pseudo_action_j, self.N)
+        self.chosen_action = ij_to_action(chosen_action_i, chosen_action_j, self.N)
         self.action_i_history.append(chosen_action_i)
         self.action_j_history.append(chosen_action_j)
-
-        self.pseudo_action = pseudo_action
-        self.chosen_action = chosen_action
-        return chosen_action
+        return self.chosen_action
 
     def update(self, x: np.ndarray, y: np.ndarray, r: float):
-        # x : (M, d_x) augmented feature matrix (assumed time-invariant across rounds)
-        # y : (N, d_y) augmented feature matrix (assumed time-invariant across rounds)
-        # r : reward of the chosen_action
         self.reward_history.append(r)
-
-        # Initialize per-arm caches on first call
-        self._init_static_arms_if_needed(x, y)
-
-        # Indices of the actually chosen pair and its features
-        chosen_i, chosen_j = action_to_ij(self.chosen_action, self.N)
-
-        # Always update imputation aggregates with new observation (to match original behavior)
-        self._update_impute_caches(chosen_i, chosen_j, r)
-
-        # Compute regularization strengths
-        kappa_x = np.power(np.sum(np.power(np.max(np.abs(x), axis=1), 4)), 0.25)
-        kappa_y = np.power(np.sum(np.power(np.max(np.abs(y), axis=1), 4)), 0.25)
-        lam_impute = (
-            2 * self.sigma * kappa_x * kappa_y * np.sqrt(2 * self.t * np.log(2 * self.M * self.N * (self.t ** 2) / self.delta))
-        )
-        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p ** 2)) * np.sqrt(
-            2 * self.t * np.log(2 * self.M * self.N * (self.t ** 2) / self.delta)
-        )
+        kappa_x = np.max(np.abs(x)); kappa_y = np.max(np.abs(y))
+        log_term = np.log(2 * self.M * self.N * self.t**2 / self.delta)
+        lam_impute = 2 * self.sigma * kappa_x * kappa_y * np.sqrt(2 * self.t * log_term)
+        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p1 * self.p2)) * np.sqrt(2 * self.t * log_term)
 
         if self.pseudo_action == self.chosen_action:
-            # --- Imputation estimator via FISTA ---
-            L_imp = self._impute_lipschitz_upper()
-            Phi_impute = self._fista_l1(self.impute_prev, lam_impute, self._grad_impute, L_imp)
+            # ---- 1. Imputation Estimator (Φ_check) 업데이트 ----
+            rewards = np.array(self.reward_history)
+            hist_x = x[self.action_i_history]; hist_y = y[self.action_j_history]
 
-            # --- Update/compute pseudo-rewards for all matched rounds with current Phi_impute ---
+            def impute_loss_fn(Phi: np.ndarray) -> float:
+                residuals = rewards - np.einsum('ti,ij,tj->t', hist_x, Phi, hist_y)
+                return np.sum(residuals ** 2)
+
+            def grad_impute_fn(Phi: np.ndarray) -> np.ndarray:
+                residuals = np.einsum('ti,ij,tj->t', hist_x, Phi, hist_y) - rewards
+                return 2 * np.einsum('t,ti,tj->ij', residuals, hist_x, hist_y)
+
+            optimization_start_time = time.time()
+            Phi_impute = self._fista_l1_backtracking(self.impute_prev, lam_impute, impute_loss_fn, grad_impute_fn)
+            self.impute_prev = Phi_impute
+
+            # ---- 2. Pseudo-Rewards 생성 및 Matching History 업데이트 ----
             if self.matching:
-                for key in self.matching:
-                    matched, data_x, data_y, _, chosen, reward = self.matching[key]
-                    if matched:
-                        ci, cj = action_to_ij(chosen, self.N)
-                        new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
-                        new_pseudo_rewards[ci, cj] += ((1 / self.p) ** 2) * (
-                            reward - (data_x[ci, :] @ Phi_impute @ data_y[cj, :])
-                        )
-                        self.matching[key] = (
-                            matched,
-                            data_x,
-                            data_y,
-                            new_pseudo_rewards,
-                            chosen,
-                            reward,
-                        )
-
-            # Pseudo-rewards for the current round and store into history
+                for key, val in self.matching.items():
+                    if val[0]:
+                        _, m_x, m_y, _, chosen_action, m_r = val
+                        chosen_i, chosen_j = action_to_ij(chosen_action, self.N)
+                        new_pseudo_rewards = m_x @ Phi_impute @ m_y.T
+                        correction = (m_r - (m_x[chosen_i, :] @ Phi_impute @ m_y[chosen_j, :].T))
+                        new_pseudo_rewards[chosen_i, chosen_j] += (1 / (self.p1 * self.p2)) * correction
+                        self.matching[key] = (True, m_x, m_y, new_pseudo_rewards, chosen_action, m_r)
+            
+            chosen_i, chosen_j = action_to_ij(self.chosen_action, self.N)
             pseudo_rewards = x @ Phi_impute @ y.T
-            pseudo_rewards[chosen_i, chosen_j] += ((1 / self.p) ** 2) * (
-                r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j, :].T)
-            )
-            self.matching[self.t] = (
-                (self.pseudo_action == self.chosen_action),
-                x,
-                y,
-                pseudo_rewards,
-                self.chosen_action,
-                r,
-            )
+            correction = r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j, :].T)
+            pseudo_rewards[chosen_i, chosen_j] += (1 / (self.p1 * self.p2)) * correction
+            self.matching[self.t] = (True, x, y, pseudo_rewards, self.chosen_action, r)
 
-            # --- Build main-stage aggregates from matched rounds ---
-            A_main = np.zeros((self.M, self.M))
-            B_main = np.zeros((self.N, self.N))
-            C_main = np.zeros((self.M, self.N))
-            for key, tup in self.matching.items():
-                matched = tup[0]
-                if not matched:
-                    continue
-                X_t, Y_t, R_t = tup[1], tup[2], tup[3]
-                A_main += X_t.T @ X_t
-                B_main += Y_t.T @ Y_t
-                C_main += X_t.T @ R_t @ Y_t
+            # ---- 3. Main Estimator (Φ_hat) 업데이트 ----
+            matched_data = [v for v in self.matching.values() if v[0]]
 
-            # Lipschitz upper bound for main: 2 * sum_t ||X_t^T X_t||_2 * ||Y_t^T Y_t||_2
-            L_main = 0.0
-            for key, tup in self.matching.items():
-                matched = tup[0]
-                if not matched:
-                    continue
-                X_t, Y_t = tup[1], tup[2]
-                L_main += self._spectral_norm(X_t.T @ X_t) * self._spectral_norm(Y_t.T @ Y_t)
-            L_main = 2.0 * max(L_main, 1e-12)
+            def main_loss_fn(Phi: np.ndarray) -> float:
+                loss = 0.0
+                for _, m_x, m_y, m_R_pseudo, _, _ in matched_data:
+                    loss += np.sum((m_R_pseudo - m_x @ Phi @ m_y.T) ** 2)
+                return loss
 
-            def _grad_main(Phi: np.ndarray) -> np.ndarray:
-                G = np.zeros_like(Phi)
-                Csum = np.zeros_like(Phi)
-                for key, tup in self.matching.items():
-                    matched = tup[0]
-                    if not matched:
-                        continue
-                    X_t, Y_t, R_t = tup[1], tup[2], tup[3]
-                    A_t = X_t.T @ X_t
-                    B_t = Y_t.T @ Y_t
-                    G += 2.0 * (A_t @ Phi @ B_t)
-                    Csum += X_t.T @ R_t @ Y_t
-                G -= 2.0 * Csum
-                return G
+            def grad_main_fn(Phi: np.ndarray) -> np.ndarray:
+                grad = np.zeros_like(Phi)
+                for _, m_x, m_y, m_R_pseudo, _, _ in matched_data:
+                    XTX = m_x.T @ m_x
+                    YTY = m_y.T @ m_y
+                    grad += 2 * (XTX @ Phi @ YTY - m_x.T @ m_R_pseudo @ m_y)
+                return grad
+            
+            Phi_main = self._fista_l1_backtracking(self.main_prev, lam_main, main_loss_fn, grad_main_fn)
+            self.main_prev = Phi_main
+            optimization_end_time = time.time()
+            
+            # 타이밍 데이터 기록
+            if hasattr(self, '_timing_data') and self._timing_data is not None:
+                agent_name = self.__class__.__name__
+                trial = getattr(self, '_trial', 0)
+                if agent_name not in self._timing_data: self._timing_data[agent_name] = {}
+                if trial not in self._timing_data[agent_name]: self._timing_data[agent_name][trial] = []
+                self._timing_data[agent_name][trial].append(optimization_end_time - optimization_start_time)
 
-            Phi_main = self._fista_l1(self.main_prev, lam_main, _grad_main, L_main)
-
-            # Update parameters and warm-starts
             self.Phi_hat = Phi_main
             self.Phi_check = Phi_impute
-            self.impute_prev = Phi_impute
-            self.main_prev = Phi_main
         else:
-            # No matched event: record only
-            self.matching[self.t] = (
-                (self.pseudo_action == self.chosen_action),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
-
-    # beta is prev Phi
-    def __imputation_loss(
-        self, beta: np.ndarray, X: np.ndarray, Y: np.ndarray, r: np.ndarray, lam: float
-    ):
-        prev_impute = beta.reshape((self.M, self.N))
-        loss = np.sum(np.power(r - np.einsum("ti,ij,tj->t", X, prev_impute, Y), 2))
-        l1_norm = np.sum(np.abs(beta))
-        return loss + (lam * l1_norm)
-
-    # matching_history: (matched,x,y,pseudo_rewards,chosen_action,r,)
-    def __main_loss(self, beta: np.ndarray, lam: float, matching_history: dict):
-        # residuals_list = list()
-        # for _, value in matching_history.items():
-        #     if value[0]:
-        #         residuals_list.append((value[3] - (np.kron(value[1],value[2])@beta)) ** 2)
-
-        # # Sum all residuals efficiently
-        # residuals_sum = sum(np.sum(residuals) for residuals in residuals_list)
-
-        # # L1 regularization
-        # l1_norm = np.sum(np.abs(beta))
-
-        # # Total loss
-        # return residuals_sum + lam * l1_norm
-
-        # Extract matched keys and data
-        matched_keys = [
-            key for key, value in matching_history.items() if value[0]
-        ]  # Filter matched entries
-
-        X_list = [
-            matching_history[key][1] for key in matched_keys
-        ]  # List of X matrices
-
-        Y_list = [
-            matching_history[key][2] for key in matched_keys
-        ]  # List of Y matrices
-
-        pseudo_rewards_list = [
-            matching_history[key][3] for key in matched_keys
-        ]  # List of pseudo_rewards
-
-        prev_main = beta.reshape((self.M, self.N))
-        # Compute residuals for matched keys
-
-        loss = np.sum(
-            np.power(
-                pseudo_rewards_list
-                - np.einsum("tab,bc,tdc->tad", X_list, prev_main, Y_list),
-                2,
-            )
-        )
-
-        # residuals_list = [
-        #     (pseudo_rewards - X @ prev_main @ Y.T) ** 2
-        #     for X, Y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
-        # ]
-
-        # L1 regularization
-        l1_norm = np.sum(np.abs(beta))
-
-        # Total loss
-        return loss + lam * l1_norm
+            self.matching[self.t] = (False, None, None, None, None, None)
 
     def __get_param(self):
         return {"param": self.Phi_hat, "impute": self.Phi_check}
+
+
+# class BiRoLFLasso_FISTA(ContextualBandit):
+#     def __init__(
+#         self,
+#         M: int,
+#         N: int,
+#         sigma: float,
+#         delta: float,
+#         p: float,
+#         p1: float = None,
+#         p2: float = None,
+#         explore: bool = False,
+#         init_explore: int = 0,
+#         theoretical_init_explore: bool = False,
+#     ):
+#         self.t = 0
+#         self.explore = explore
+#         self.init_explore = init_explore
+#         ## TODO: make theoretical C_e
+#         if theoretical_init_explore:
+#             # self.init_explore = ((8*M*N)**3)
+#             pass
+#         self.M = M
+#         self.N = N
+#         self.delta = delta
+        
+#         self.p = p
+#         # p1과 p2가 별도로 지정되지 않으면 p 값을 사용
+#         self.p1 = p1 if p1 is not None else p
+#         self.p2 = p2 if p2 is not None else p
+        
+#         self.sigma = sigma
+
+#         self.action_i_history = []
+#         self.action_j_history = []
+#         self.reward_history = []
+
+#         self.matching = dict()
+#         self.Phi_hat = np.zeros((self.M, self.N))
+#         self.Phi_check = np.zeros((self.M, self.N))
+#         self.impute_prev = np.zeros((self.M, self.N))
+#         self.main_prev = np.zeros((self.M, self.N))
+
+#         # --- Caches for fast proximal updates (FISTA) ---
+#         # We aggregate per static arms (i,j) to compute exact gradients quickly.
+#         self._static_arms_initialized = False
+#         self.X_static = None   # (M, d_x) copy of x at first update
+#         self.Y_static = None   # (N, d_y) copy of y at first update
+#         # Per-arm matrices A_i = x_i x_i^T, B_j = y_j y_j^T
+#         self.A_i = None        # list of length M, each (d_x, d_x)
+#         self.B_j = None        # list of length N, each (d_y, d_y)
+#         # Pair counts and reward sums
+#         self.Ncnt = np.zeros((self.M, self.N), dtype=int)
+#         self.Ssum = np.zeros((self.M, self.N), dtype=float)
+#         # For each i, Bbar_i = sum_j Ncnt[i,j] * B_j
+#         self.Bbar_i = None     # list of length M, each (d_y, d_y)
+#         # Aggregated C_sum = sum_{i,j} Ssum[i,j] * x_i y_j^T  (shape (M,N) in Φ-space)
+#         self.C_sum = np.zeros((self.M, self.N), dtype=float)
+
+#         # FISTA hyperparameters - relaxed tolerance for better convergence
+#         self.fista_max_iter = 500
+#         self.fista_tol = 1e-8
+    
+#     # ---------- FISTA utilities (for imputation & main) ----------
+#     @staticmethod
+#     def _soft_threshold(Z: np.ndarray, tau: float) -> np.ndarray:
+#         """Elementwise soft-thresholding for ℓ1 prox."""
+#         return np.sign(Z) * np.maximum(np.abs(Z) - tau, 0.0)
+
+#     @staticmethod
+#     def _spectral_norm(M: np.ndarray, n_iter: int = 20) -> float:
+#         """Power iteration approximation of spectral norm ||M||_2."""
+#         if M.size == 0:
+#             return 0.0
+#         v = np.random.randn(M.shape[1])
+#         v /= (np.linalg.norm(v) + 1e-12)
+#         for _ in range(n_iter):
+#             v = M.T @ (M @ v)
+#             nv = np.linalg.norm(v) + 1e-12
+#             v /= nv
+#         return float(np.sqrt(v @ (M.T @ (M @ v))))
+
+#     def _init_static_arms_if_needed(self, x: np.ndarray, y: np.ndarray) -> None:
+#         """Initialize per-arm caches A_i, B_j, Bbar_i and store static copies of x,y at first update."""
+#         if self._static_arms_initialized:
+#             return
+#         self.X_static = x.copy()
+#         self.Y_static = y.copy()
+#         # Build A_i and B_j from static arms
+#         self.A_i = [np.outer(self.X_static[i, :], self.X_static[i, :]) for i in range(self.M)]
+#         self.B_j = [np.outer(self.Y_static[j, :], self.Y_static[j, :]) for j in range(self.N)]
+#         # Initialize Bbar_i as zeros
+#         self.Bbar_i = [np.zeros((self.Y_static.shape[1], self.Y_static.shape[1]), dtype=float) for _ in range(self.M)]
+#         self._static_arms_initialized = True
+
+#     def _update_impute_caches(self, i: int, j: int, r: float) -> None:
+#         """Incremental updates for imputation aggregates given a new observation (i,j,r)."""
+#         self.Ncnt[i, j] += 1
+#         self.Ssum[i, j] += r
+#         # Bbar_i[i] += B_j
+#         self.Bbar_i[i] += self.B_j[j]
+#         # C_sum += r * x_i y_j^T
+#         self.C_sum += np.outer(self.X_static[i, :], self.Y_static[j, :]) * r
+
+#     def _grad_impute(self, Phi: np.ndarray) -> np.ndarray:
+#         """Exact gradient: 2 * (sum_i A_i Φ Bbar_i[i] - C_sum) with numerical safeguards."""
+#         try:
+#             G = -2.0 * self.C_sum
+#             for i in range(self.M):
+#                 if np.any(self.Bbar_i[i]):  # Only compute if Bbar_i[i] is non-zero
+#                     term = self.A_i[i] @ Phi @ self.Bbar_i[i]
+#                     # Check for overflow
+#                     if np.any(np.isnan(term)) or np.any(np.isinf(term)):
+#                         continue
+#                     G += 2.0 * term
+            
+#             # Final sanity check
+#             if np.any(np.isnan(G)) or np.any(np.isinf(G)):
+#                 return np.zeros_like(Phi)  # Return zero gradient if numerical issues
+                
+#             return G
+#         except (OverflowError, FloatingPointError):
+#             return np.zeros_like(Phi)
+
+#     def _impute_lipschitz_upper(self) -> float:
+#         """Conservative and safe Lipschitz bound for imputation stage."""
+#         if self.t <= 1:
+#             return 1.0  # Safe default for early iterations
+            
+#         # Use a much more conservative bound
+#         total = 0.0
+#         active_arms = 0
+#         for i in range(self.M):
+#             if np.any(self.Bbar_i[i]):
+#                 # Use operator norms but cap them
+#                 LA = min(np.linalg.norm(self.A_i[i], ord=2), 10.0)
+#                 LB = min(np.linalg.norm(self.Bbar_i[i], ord=2), 10.0)
+#                 total += LA * LB
+#                 active_arms += 1
+        
+#         # Additional safety: don't let it get too large
+#         result = 2.0 * max(total, 0.1)
+#         return min(result, 100.0)  # Cap at reasonable value
+
+#     def _fista_l1(self, Phi0: np.ndarray, lam: float, grad_fn, L_bound: float, max_iter: int = None, tol: float = None) -> np.ndarray:
+#         """Ultra-conservative FISTA for min_Φ g(Φ) + lam ||Φ||_1 with extensive safeguards."""
+#         if max_iter is None:
+#             max_iter = self.fista_max_iter
+#         if tol is None:
+#             tol = self.fista_tol
+        
+#         # Very conservative step size
+#         L = max(L_bound, 1.0)
+#         eta = 0.1 / L  # Much smaller step size
+        
+#         # Ensure lambda is reasonable
+#         if lam <= 0 or np.isnan(lam) or np.isinf(lam):
+#             lam = 1e-4
+#         lam = min(lam, 1.0)  # Cap lambda
+            
+#         Phi = Phi0.copy()
+#         Y = Phi0.copy()
+#         t_par = 1.0
+        
+#         best_phi = Phi.copy()
+#         best_obj = float('inf')
+        
+#         for iteration in range(max_iter):
+#             G = grad_fn(Y)
+            
+#             # Extensive numerical checks
+#             if np.any(np.isnan(G)) or np.any(np.isinf(G)):
+#                 break
+                
+#             # Cap gradient magnitude
+#             grad_norm = np.linalg.norm(G, ord='fro')
+#             if grad_norm > 1e6:
+#                 G = G / grad_norm * 1e3
+            
+#             # Take a very conservative step
+#             Z_next = Y - eta * G
+            
+#             # Check for overflow
+#             if np.any(np.isnan(Z_next)) or np.any(np.isinf(Z_next)):
+#                 break
+                
+#             # Cap the values before soft thresholding
+#             Z_next = np.clip(Z_next, -1e6, 1e6)
+            
+#             Phi_next = self._soft_threshold(Z_next, lam * eta)
+            
+#             # Check for numerical issues
+#             if np.any(np.isnan(Phi_next)) or np.any(np.isinf(Phi_next)):
+#                 break
+            
+#             # Cap the result
+#             Phi_next = np.clip(Phi_next, -1e6, 1e6)
+            
+#             # Check objective value for monotonicity
+#             try:
+#                 # Simple objective check: if it's getting much worse, stop
+#                 phi_norm = np.linalg.norm(Phi_next, ord='fro')
+#                 if phi_norm > 1e6:  # Solution is exploding
+#                     break
+                    
+#                 # Update best solution
+#                 current_obj = 0.5 * np.linalg.norm(G, ord='fro')**2 + lam * np.sum(np.abs(Phi_next))
+#                 if current_obj < best_obj:
+#                     best_obj = current_obj
+#                     best_phi = Phi_next.copy()
+                    
+#             except:
+#                 break
+            
+#             # Momentum update with safeguards
+#             t_next = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * t_par * t_par))
+#             if np.isnan(t_next) or np.isinf(t_next) or t_next > 1e6:
+#                 t_next = 1.0
+                
+#             momentum_coeff = (t_par - 1.0) / t_next
+#             if abs(momentum_coeff) > 10.0:  # Cap momentum
+#                 momentum_coeff = np.sign(momentum_coeff) * 10.0
+                
+#             Y = Phi_next + momentum_coeff * (Phi_next - Phi)
+            
+#             # Check Y for issues
+#             if np.any(np.isnan(Y)) or np.any(np.isinf(Y)):
+#                 Y = Phi_next.copy()
+                
+#             # Cap Y
+#             Y = np.clip(Y, -1e6, 1e6)
+            
+#             # Convergence check
+#             norm_diff = np.linalg.norm(Phi_next - Phi, ord='fro')
+#             norm_phi = np.linalg.norm(Phi, ord='fro')
+            
+#             if norm_diff <= tol * max(1.0, norm_phi):
+#                 Phi = Phi_next
+#                 break
+                
+#             Phi = Phi_next
+#             t_par = t_next
+            
+#         # Return best solution found
+#         return best_phi
+
+#     def choose(self, x: np.ndarray, y: np.ndarray):
+#         # x : (M, M) augmented feature matrix where each row denotes the augmented features
+#         # y : (N, N) augmented feature matrix where each row denotes the augmented features
+
+#         self.t += 1
+
+#         ## compute the \hat{a}_t
+#         if self.explore:
+#             if self.t > self.init_explore:
+#                 decision_rule = x @ self.Phi_hat @ y.T
+#                 # print(f"Decision rule : {decision_rule}")
+#                 a_hat = np.argmax(decision_rule)
+#             else:
+#                 a_hat = np.random.choice(np.arange(self.M * self.N))
+#         else:
+#             ## decision_rule : (M,N)
+#             decision_rule = x @ self.Phi_hat @ y.T
+#             # print(f"Decision rule : {decision_rule}")
+#             a_hat = np.argmax(decision_rule)
+
+#         i_hat, j_hat = action_to_ij(a_hat, self.N)
+
+#         self.a_hat = a_hat
+#         self.i_hat = i_hat
+#         self.j_hat = j_hat
+
+#         ## sampling actions
+#         count1 = 0
+#         count2 = 0
+
+#         ## ~! rho_t !~ ##
+#         max_iter1 = int(
+#             np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p1))
+#         )
+#         max_iter2 = int(
+#             np.log(2 * ((self.t + 1) ** 2) / self.delta) / np.log(1 / (1 - self.p2))
+#         )
+
+#         ## ~! phi_t !~ ##
+#         pseudo_dist_x = np.array([(1 - self.p1) / (self.M - 1)] * self.M, dtype=float)
+#         pseudo_dist_x[i_hat] = self.p1
+
+#         pseudo_dist_y = np.array([(1 - self.p2) / (self.N - 1)] * self.N, dtype=float)
+#         pseudo_dist_y[j_hat] = self.p2
+
+#         ## ~! epsilon(sqrt(t))-greedy ~! ##
+#         chosen_dist_x = np.array(
+#             [(1 / np.sqrt(self.t)) / (self.M - 1)] * self.M,
+#             dtype=float,
+#         )
+#         chosen_dist_x[i_hat] = 1 - (1 / np.sqrt(self.t))
+
+#         chosen_dist_y = np.array(
+#             [(1 / np.sqrt(self.t)) / (self.N - 1)] * self.N,
+#             dtype=float,
+#         )
+#         chosen_dist_y[j_hat] = 1 - (1 / np.sqrt(self.t))
+
+#         pseudo_action_i = -1
+#         chosen_action_i = -2
+#         while (pseudo_action_i != chosen_action_i) and (count1 <= max_iter1):
+#             ## Sample the pseudo action
+#             pseudo_action_i = np.random.choice(
+#                 [i for i in range(self.M)], size=1, replace=False, p=pseudo_dist_x
+#             ).item()
+
+#             ## Sample the chosen action
+#             chosen_action_i = np.random.choice(
+#                 [i for i in range(self.M)], size=1, replace=False, p=chosen_dist_x
+#             ).item()
+
+#             count1 += 1
+
+#         pseudo_action_j = -1
+#         chosen_action_j = -2
+#         while (pseudo_action_j != chosen_action_j) and (count2 <= max_iter2):
+#             ## Sample the pseudo action
+#             pseudo_action_j = np.random.choice(
+#                 [i for i in range(self.N)], size=1, replace=False, p=pseudo_dist_y
+#             ).item()
+
+#             ## Sample the chosen action
+#             chosen_action_j = np.random.choice(
+#                 [i for i in range(self.N)], size=1, replace=False, p=chosen_dist_y
+#             ).item()
+
+#             count2 += 1
+
+#         pseudo_action = pseudo_action_i * self.N + pseudo_action_j
+#         chosen_action = chosen_action_i * self.N + chosen_action_j
+
+#         # add to the history
+#         self.action_i_history.append(chosen_action_i)
+#         self.action_j_history.append(chosen_action_j)
+
+#         self.pseudo_action = pseudo_action
+#         self.chosen_action = chosen_action
+#         return chosen_action
+
+#     def update(self, x: np.ndarray, y: np.ndarray, r: float):
+#         # x : (M, d_x) augmented feature matrix (assumed time-invariant across rounds)
+#         # y : (N, d_y) augmented feature matrix (assumed time-invariant across rounds)
+#         # r : reward of the chosen_action
+#         self.reward_history.append(r)
+
+#         # Initialize per-arm caches on first call
+#         self._init_static_arms_if_needed(x, y)
+
+#         # Indices of the actually chosen pair and its features
+#         chosen_i, chosen_j = action_to_ij(self.chosen_action, self.N)
+
+#         # Always update imputation aggregates with new observation (to match original behavior)
+#         self._update_impute_caches(chosen_i, chosen_j, r)
+
+#         # Compute regularization strengths - much more conservative approach
+#         kappa_x = np.max(np.abs(x))
+#         kappa_y = np.max(np.abs(y))
+        
+#         # Use much more conservative regularization that's actually suitable for FISTA
+#         # Base regularization on data scale rather than theoretical bounds
+#         data_scale = np.sqrt(self.M * self.N)
+#         base_lambda = 0.01 * data_scale / max(np.sqrt(self.t), 1.0)
+        
+#         lam_impute = base_lambda
+#         lam_main = base_lambda * 2  # Slightly stronger for main stage
+
+#         if self.pseudo_action == self.chosen_action:
+#             # --- Imputation estimator via FISTA ---
+#             L_imp = self._impute_lipschitz_upper()
+#             Phi_impute = self._fista_l1(self.impute_prev, lam_impute, self._grad_impute, L_imp)
+
+#             # --- Update/compute pseudo-rewards for all matched rounds with current Phi_impute ---
+#             if self.matching:
+#                 for key in self.matching:
+#                     matched, data_x, data_y, _, chosen, reward = self.matching[key]
+#                     if matched:
+#                         ci, cj = action_to_ij(chosen, self.N)
+#                         new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
+#                         new_pseudo_rewards[ci, cj] += (1 / (self.p1 * self.p2)) * (
+#                             reward - (data_x[ci, :] @ Phi_impute @ data_y[cj, :].T)
+#                         )
+#                         self.matching[key] = (
+#                             matched,
+#                             data_x,
+#                             data_y,
+#                             new_pseudo_rewards,
+#                             chosen,
+#                             reward,
+#                         )
+
+#             # Pseudo-rewards for the current round and store into history
+#             pseudo_rewards = x @ Phi_impute @ y.T
+#             pseudo_rewards[chosen_i, chosen_j] += (1 / (self.p1 * self.p2)) * (
+#                 r - (x[chosen_i, :] @ Phi_impute @ y[chosen_j, :].T)
+#             )
+#             self.matching[self.t] = (
+#                 (self.pseudo_action == self.chosen_action),
+#                 x,
+#                 y,
+#                 pseudo_rewards,
+#                 self.chosen_action,
+#                 r,
+#             )
+
+#             # --- Build main-stage aggregates from matched rounds ---
+#             # Cache matrices for efficiency since X_t and Y_t are static
+#             if not hasattr(self, '_XTX_cached'):
+#                 self._XTX_cached = x.T @ x
+#                 self._YTY_cached = y.T @ y
+#                 self._XTX_spectral = self._spectral_norm(self._XTX_cached)
+#                 self._YTY_spectral = self._spectral_norm(self._YTY_cached)
+            
+#             A_main = np.zeros_like(self._XTX_cached)
+#             B_main = np.zeros_like(self._YTY_cached)
+#             C_main = np.zeros((x.shape[1], y.shape[1]))
+            
+#             matched_count = 0
+#             for key, tup in self.matching.items():
+#                 matched = tup[0]
+#                 if not matched:
+#                     continue
+#                 X_t, Y_t, R_t = tup[1], tup[2], tup[3]
+#                 A_main += X_t.T @ X_t
+#                 B_main += Y_t.T @ Y_t
+#                 C_main += X_t.T @ R_t @ Y_t
+#                 matched_count += 1
+
+#             # Conservative Lipschitz bound for main stage
+#             main_bound = 2.0 * max(matched_count * 0.1, 0.1)  # Very conservative
+#             L_main = min(main_bound, 10.0)  # Cap the bound
+
+#             def _grad_main(Phi: np.ndarray) -> np.ndarray:
+#                 # Use precomputed A_main, B_main, C_main for efficiency
+#                 try:
+#                     G = 2.0 * (A_main @ Phi @ B_main) - 2.0 * C_main
+#                     # Check for numerical issues
+#                     if np.any(np.isnan(G)) or np.any(np.isinf(G)):
+#                         # Fallback to zero gradient if numerical issues occur
+#                         G = np.zeros_like(Phi)
+#                 except (OverflowError, FloatingPointError):
+#                     # Handle overflow/underflow gracefully
+#                     G = np.zeros_like(Phi)
+#                 return G
+
+#             # Time the lasso optimization for BiRoLFLasso_FISTA
+#             optimization_start_time = time.time()
+            
+#             Phi_main = self._fista_l1(self.main_prev, lam_main, _grad_main, L_main)
+            
+#             optimization_end_time = time.time()
+#             optimization_time = optimization_end_time - optimization_start_time
+            
+#             # Record timing data for ablation study
+#             if hasattr(self, '_timing_data') and self._timing_data is not None:
+#                 agent_name = self.__class__.__name__
+#                 trial = getattr(self, '_trial', 0)
+                
+#                 # Initialize nested dict structure if needed
+#                 if agent_name not in self._timing_data:
+#                     self._timing_data[agent_name] = {}
+#                 if trial not in self._timing_data[agent_name]:
+#                     self._timing_data[agent_name][trial] = []
+                    
+#                 self._timing_data[agent_name][trial].append(optimization_time)
+
+#             # Update parameters and warm-starts
+#             self.Phi_hat = Phi_main
+#             self.Phi_check = Phi_impute
+#             self.impute_prev = Phi_impute
+#             self.main_prev = Phi_main
+#         else:
+#             # No matched event: record only
+#             self.matching[self.t] = (
+#                 (self.pseudo_action == self.chosen_action),
+#                 None,
+#                 None,
+#                 None,
+#                 None,
+#                 None,
+#             )
+
+#     # beta is prev Phi
+#     def __imputation_loss(
+#         self, beta: np.ndarray, X: np.ndarray, Y: np.ndarray, r: np.ndarray, lam: float
+#     ):
+#         prev_impute = beta.reshape((self.M, self.N))
+#         loss = np.sum(np.power(r - np.einsum("ti,ij,tj->t", X, prev_impute, Y), 2))
+#         l1_norm = np.sum(np.abs(beta))
+#         return loss + (lam * l1_norm)
+
+#     # matching_history: (matched,x,y,pseudo_rewards,chosen_action,r,)
+#     def __main_loss(self, beta: np.ndarray, lam: float, matching_history: dict):
+#         # residuals_list = list()
+#         # for _, value in matching_history.items():
+#         #     if value[0]:
+#         #         residuals_list.append((value[3] - (np.kron(value[1],value[2])@beta)) ** 2)
+
+#         # # Sum all residuals efficiently
+#         # residuals_sum = sum(np.sum(residuals) for residuals in residuals_list)
+
+#         # # L1 regularization
+#         # l1_norm = np.sum(np.abs(beta))
+
+#         # # Total loss
+#         # return residuals_sum + lam * l1_norm
+
+#         # Extract matched keys and data
+#         matched_keys = [
+#             key for key, value in matching_history.items() if value[0]
+#         ]  # Filter matched entries
+
+#         X_list = [
+#             matching_history[key][1] for key in matched_keys
+#         ]  # List of X matrices
+
+#         Y_list = [
+#             matching_history[key][2] for key in matched_keys
+#         ]  # List of Y matrices
+
+#         pseudo_rewards_list = [
+#             matching_history[key][3] for key in matched_keys
+#         ]  # List of pseudo_rewards
+
+#         prev_main = beta.reshape((self.M, self.N))
+#         # Compute residuals for matched keys
+
+#         loss = np.sum(
+#             np.power(
+#                 pseudo_rewards_list
+#                 - np.einsum("tab,bc,tdc->tad", X_list, prev_main, Y_list),
+#                 2,
+#             )
+#         )
+
+#         # residuals_list = [
+#         #     (pseudo_rewards - X @ prev_main @ Y.T) ** 2
+#         #     for X, Y, pseudo_rewards in zip(X_list, Y_list, pseudo_rewards_list)
+#         # ]
+
+#         # L1 regularization
+#         l1_norm = np.sum(np.abs(beta))
+
+#         # Total loss
+#         return loss + lam * l1_norm
+
+#     def __get_param(self):
+#         return {"param": self.Phi_hat, "impute": self.Phi_check}
     
 
 class LowOFUL(ContextualBandit):
