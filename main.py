@@ -470,7 +470,10 @@ def bilinear_run(
             chosen_action = agent.choose()
         chosen_i, chosen_j = action_to_ij(chosen_action, N)
         chosen_reward = exp_rewards_mat[chosen_i][chosen_j] + noise
-
+        
+        ## compute the regret
+        regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
+        
         # HERE
         if verbose:
             try:
@@ -479,14 +482,14 @@ def bilinear_run(
                         true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y},
                         Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__},
                         Round : {t+1}, optimal : {optimal_action}, a_hat: {agent.a_hat},
-                        pseudo : {agent.pseudo_action}, chosen action : {ij_to_action(chosen_i,chosen_j,cfg.arm_y)}
+                        pseudo : {agent.pseudo_action}, chosen action : {ij_to_action(chosen_i,chosen_j,cfg.arm_y)}, regret : {regrets[t]}
                     """
             except:
                 string = f"""
                         case : {cfg.case}, SEED : {cfg.seed}, M : {cfg.arm_x}, N: {cfg.arm_y},
                         true_dim_x : {cfg.true_dim_x}, true_dim_y : {cfg.true_dim_y}, Obs_dim_x : {cfg.dim_x}, Obs_dim_y : {cfg.dim_y},
                         Trial : {trial}, p : {cfg.p}, Agent : {agent.__class__.__name__},
-                        Round : {t+1}, optimal : {optimal_action}, chosen action: {ij_to_action(chosen_i,chosen_j,cfg.arm_y)}
+                        Round : {t+1}, optimal : {optimal_action}, chosen action: {ij_to_action(chosen_i,chosen_j,cfg.arm_y)}, regret : {regrets[t]}
                     """
                 
             save_log(path=LOG_PATH+f"/{agent.__class__.__name__}/{trial}", fname=fname+f"_trial_{trial}", string=" ".join(string.split()))
@@ -499,9 +502,6 @@ def bilinear_run(
         #     checkpoint_data["np_random_state"] = np.random.get_state()
         #     checkpoint_data["agent_parameter"] = agent.get_param()
         #     save_checkpoint(path=CHECKPOINT_PATH+f"/{agent.__class__.__name__}/{trial}", fname=f"{t}_{fname}", data=checkpoint_data)
-        
-        ## compute the regret
-        regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
 
         ## update the agent
         if isinstance(agent, BiLinearContextualBandit):
