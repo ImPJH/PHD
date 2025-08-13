@@ -370,11 +370,8 @@ def bilinear_run_trial(
     exp_rewards_mat = exp_rewards_mat / np.max(np.abs(exp_rewards_mat))
 
     if (
-        isinstance(agent, (LinUCB,LinTS,DRLassoBandit,ESTRLowOFUL))
+        isinstance(agent, (LinearRoLF,BiLinearRoLF))
     ):
-        data_x = X.T
-        data_y = Y.T
-    else:
         # (M, M-d) matrix and each column vector denotes the orthogonal basis if M > d
         # (M, M) matrix from singular value decomposition if d > M
         basis_X = orthogonal_complement_basis(X)
@@ -400,10 +397,13 @@ def bilinear_run_trial(
             data_y = y_aug
         else:
             data_y = basis_Y
+    else:
+        data_x = X.T
+        data_y = Y.T
 
     # print(f"Agent : {agent.__class__.__name__}\t data_x shape : {data_x.shape}")
     # print(f"Agent : {agent.__class__.__name__}\t data_y shape : {data_y.shape}")
-
+    
     regrets = bilinear_run(
         trial=now_trial,
         agent=agent,
@@ -424,7 +424,7 @@ def bilinear_run_trial(
 ## Each data is augmented when using RoLF-like algorithm
 def bilinear_run(
     trial: int,
-    agent: Union[MAB, ContextualBandit],
+    agent: Union[MAB, LinearContextualBandit, BiLinearContextualBandit],
     horizon: int,
     exp_rewards_mat: np.ndarray,
     x: np.ndarray,
@@ -444,7 +444,8 @@ def bilinear_run(
 
     # For linear contextual bandits
     # For RoLF this is (MN,MN), otherwise (MN,d_x*d_y)
-    z = np.kron(x, y)
+    if not isinstance(agent,(BiLinearContextualBandit)):
+        z = np.kron(x, y)
 
     ## compute the optimal action
     optimal_action = np.argmax(exp_rewards_mat)
@@ -461,9 +462,9 @@ def bilinear_run(
             distribution=noise_dist, size=1, std=noise_std
         )
 
-        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA, ESTRLowOFUL)):
+        if isinstance(agent, BiLinearContextualBandit):
             chosen_action = agent.choose(x, y)
-        elif isinstance(agent, ContextualBandit):
+        elif isinstance(agent, LinearContextualBandit):
             chosen_action = agent.choose(z)
         else:
             chosen_action = agent.choose()
@@ -503,9 +504,9 @@ def bilinear_run(
         regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
 
         ## update the agent
-        if isinstance(agent, (BiRoLFLasso, BiRoLFLasso_FISTA, ESTRLowOFUL)):
+        if isinstance(agent, BiLinearContextualBandit):
             agent.update(x=x, y=y, r=chosen_reward)
-        elif isinstance(agent, ContextualBandit):
+        elif isinstance(agent, LinearContextualBandit):
             agent.update(x=z, r=chosen_reward)
         else:
             agent.update(a=chosen_action, r=chosen_reward)

@@ -253,7 +253,16 @@ class ThompsonSampling(MAB):
 #############################################################################
 ############################ Contextual Bandits #############################
 #############################################################################
-class ContextualBandit(ABC):
+class LinearContextualBandit(ABC):
+    @abstractmethod
+    def choose(self, x):
+        pass
+
+    @abstractmethod
+    def update(self, x, r):
+        pass
+    
+class LinearRoLF(LinearContextualBandit, ABC):
     @abstractmethod
     def choose(self, x):
         pass
@@ -262,8 +271,26 @@ class ContextualBandit(ABC):
     def update(self, x, r):
         pass
 
+class BiLinearContextualBandit(ABC):
+    @abstractmethod
+    def choose(self, x, y):
+        pass
 
-class LinUCB(ContextualBandit):
+    @abstractmethod
+    def update(self, x, y, r):
+        pass
+    
+class BiLinearRoLF(BiLinearContextualBandit,ABC):
+    @abstractmethod
+    def choose(self, x, y):
+        pass
+
+    @abstractmethod
+    def update(self, x, y, r):
+        pass
+    
+    
+class LinUCB(LinearContextualBandit):
     def __init__(self, d: int, lbda: float, delta: float) -> None:
         self.d = d
         self.xty = np.zeros(d)
@@ -301,7 +328,7 @@ class LinUCB(ContextualBandit):
         return {"param": self.theta_hat}
 
 
-class LinTS(ContextualBandit):
+class LinTS(LinearContextualBandit):
     def __init__(
         self, d: int, lbda: float, horizon: int, reward_std: float, delta: float
     ) -> None:
@@ -347,7 +374,7 @@ class LinTS(ContextualBandit):
         return {"param": self.theta_hat}
 
 
-class RoLFLasso(ContextualBandit):
+class RoLFLasso(LinearRoLF):
     def __init__(
         self,
         d: int,
@@ -566,7 +593,7 @@ class RoLFLasso(ContextualBandit):
         return {"param": self.mu_hat, "impute": self.mu_check}
 
 
-class RoLFRidge(ContextualBandit):
+class RoLFRidge(LinearRoLF):
     def __init__(
         self,
         d: int,
@@ -740,7 +767,7 @@ class RoLFRidge(ContextualBandit):
         return {"param": self.mu_hat, "impute": self.mu_check}
 
 
-class DRLassoBandit(ContextualBandit):
+class DRLassoBandit(LinearContextualBandit):
     def __init__(
         self, d: int, arms: int, lam1: float, lam2: float, zT: float, tr: bool
     ):
@@ -817,7 +844,7 @@ class DRLassoBandit(ContextualBandit):
         return self.beta_hat
 
 
-class LassoBandit(ContextualBandit):
+class LassoBandit(LinearContextualBandit):
     def __init__(
         self,
         arms: int,
@@ -925,7 +952,7 @@ class LassoBandit(ContextualBandit):
         return loss + (lam * l1norm)
 
 
-class BiRoLFLasso(ContextualBandit):
+class BiRoLFLasso(BiLinearRoLF):
     def __init__(
         self,
         M: int,
@@ -1245,7 +1272,7 @@ class BiRoLFLasso(ContextualBandit):
 
 
 
-class BiRoLFLasso_FISTA(ContextualBandit):
+class BiRoLFLasso_FISTA(BiLinearRoLF):
     def __init__(
         self,
         M: int,
@@ -1678,7 +1705,7 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         return {"param": self.Phi_hat, "impute": self.Phi_check}
     
 
-class LowOFUL(ContextualBandit):
+class LowOFUL(BiLinearContextualBandit):
     """
     LowOFUL: A variant of OFUL for almost-low-dimensional structure.
     Implements Algorithm 1 from “Bilinear Bandits with Low-rank Structure”:
@@ -1779,7 +1806,7 @@ class LowOFUL(ContextualBandit):
     def __get_param(self) -> Dict[str, np.ndarray]:
         return {"param": self.theta_hat}
 
-class ESTRLowOFUL(ContextualBandit):
+class ESTRLowOFUL(BiLinearContextualBandit):
     """
     Explore-Subspace-Then-Refine (ESTR) + LowOFUL for bilinear bandits.
 
