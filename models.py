@@ -1502,13 +1502,18 @@ class BiRoLFLasso_FISTA(ContextualBandit):
         self._update_impute_caches(chosen_i, chosen_j, r)
 
         # Compute regularization strengths
-        kappa_x = np.power(np.sum(np.power(np.max(np.abs(x), axis=1), 4)), 0.25)
-        kappa_y = np.power(np.sum(np.power(np.max(np.abs(y), axis=1), 4)), 0.25)
+        kappa_x = np.max(np.abs(x))
+        kappa_y = np.max(np.abs(y))
         lam_impute = (
-            2 * self.sigma * kappa_x * kappa_y * np.sqrt(2 * self.t * np.log(2 * self.M * self.N * (self.t ** 2) / self.delta))
+            2
+            * self.sigma
+            * kappa_x
+            * kappa_y
+            * np.sqrt(2 * self.t * np.log(2 * self.M * self.N / self.delta))
+            * np.sqrt(2 * self.t * np.log(2 * self.M * self.N * self.t * self.t / self.delta))
         )
-        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p ** 2)) * np.sqrt(
-            2 * self.t * np.log(2 * self.M * self.N * (self.t ** 2) / self.delta)
+        lam_main = (4 * self.sigma * kappa_x * kappa_y / (self.p1 * self.p2)) * np.sqrt(
+            2 * self.t * np.log(2 * self.M * self.N * self.t * self.t / self.delta)
         )
 
         if self.pseudo_action == self.chosen_action:
@@ -1523,8 +1528,8 @@ class BiRoLFLasso_FISTA(ContextualBandit):
                     if matched:
                         ci, cj = action_to_ij(chosen, self.N)
                         new_pseudo_rewards = data_x @ Phi_impute @ data_y.T
-                        new_pseudo_rewards[ci, cj] += ((1 / self.p) ** 2) * (
-                            reward - (data_x[ci, :] @ Phi_impute @ data_y[cj, :])
+                        new_pseudo_rewards[ci, cj] += (1 / (self.p1 * self.p2)) * (
+                            reward - (data_x[ci, :] @ Phi_impute @ data_y[cj, :].T)
                         )
                         self.matching[key] = (
                             matched,
