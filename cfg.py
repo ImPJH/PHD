@@ -17,18 +17,18 @@ def get_cfg():
     # parser.add_argument("--dim", "-d", type=int, default=10)
     
     ## For Bilinear model
-    parser.add_argument("--arm_x", "-M", type=int, default=4)
-    parser.add_argument("--arm_y", "-N", type=int, default=4)
-    parser.add_argument("--true_dim_x", "-tx", type=int, default=6)
-    parser.add_argument("--true_dim_y", "-ty", type=int, default=6)
-    parser.add_argument("--dim_x", "-dx", type=int, default=2)
-    parser.add_argument("--dim_y", "-dy", type=int, default=2)
+    parser.add_argument("--arm_x", "-M", type=int, default=10)
+    parser.add_argument("--arm_y", "-N", type=int, default=10)
+    parser.add_argument("--true_dim_x", "-tx", type=int, default=20)
+    parser.add_argument("--true_dim_y", "-ty", type=int, default=20)
+    parser.add_argument("--dim_x", "-dx", type=int, default=5)
+    parser.add_argument("--dim_y", "-dy", type=int, default=5)
     
     parser.add_argument("--p1", type=float, default=0.9, help="BiRoLF p1 parameter for x dimension")
     parser.add_argument("--p2", type=float, default=0.9, help="BiRoLF p2 parameter for y dimension")
 
-    parser.add_argument("--horizon", "-T", type=int, default=1000)
-    parser.add_argument("--seed", "-S", type=int, default=462)
+    parser.add_argument("--horizon", "-T", type=int, default=700)
+    parser.add_argument("--seed", "-S", type=int, default=10205)
     parser.add_argument("--rho_sq", type=float, default=0.5)
     
     parser.add_argument("--feat_dist", "-FD", type=str, default="gaussian")

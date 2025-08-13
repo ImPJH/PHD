@@ -401,7 +401,8 @@ def bilinear_run_trial(
         else:
             data_y = basis_Y
 
-    # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
+    # print(f"Agent : {agent.__class__.__name__}\t data_x shape : {data_x.shape}")
+    # print(f"Agent : {agent.__class__.__name__}\t data_y shape : {data_y.shape}")
 
     regrets = bilinear_run(
         trial=now_trial,
