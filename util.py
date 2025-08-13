@@ -564,6 +564,14 @@ def save_log(path: str, fname: str, string: str):
     os.makedirs(path, exist_ok=True)
     with open(f"{path}/{fname}.log", "a") as f:
         f.write(f"{string}\n")
+    
+def save_checkpoint(path:str, fname:str, data:dict):
+    os.makedirs(path,exist_ok=True)
+    with open(f"{path}/{fname}.json","w") as f:
+        json.dump(data,f)
+    
+    
+    
 
 
 def orthogonal_complement_basis(X):

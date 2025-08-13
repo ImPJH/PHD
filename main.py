@@ -29,6 +29,7 @@ FIGURE_PATH = f"{MOTHER_PATH}/figures/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.
 LOG_PATH = (
     f"{MOTHER_PATH}/logs/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
 )
+CHECKPOINT_PATH = f"{MOTHER_PATH}/checkpoints/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
 
 ## ~! Generate feature matrix Z(full feature), X(observerable feature) !~
 
@@ -358,7 +359,7 @@ def bilinear_run_trial(
         dimension_x=d_x_star,
         dimension_y=d_y_star,
         distribution=cfg.param_dist,
-        disjoint=True,
+        disjoint=cfg.param_disjoint,
         bound=cfg.param_bound,
         bound_type=cfg.param_bound_type,
         uniform_rng=cfg.param_uniform_rng,
@@ -444,15 +445,15 @@ def bilinear_run(
     # For RoLF this is (MN,MN), otherwise (MN,d_x*d_y)
     z = np.kron(x, y)
 
+    ## compute the optimal action
+    optimal_action = np.argmax(exp_rewards_mat)
+    M, N = exp_rewards_mat.shape
+    optimal_i, optimal_j = action_to_ij(optimal_action, N)
+    optimal_reward = exp_rewards_mat[optimal_i][optimal_j]
+    
     for t in bar:
         # if t == 0:
         #     print(f"Number of actions : {x.shape[0]}\tReward range : [{np.amin(exp_rewards):.5f}, {np.amax(exp_rewards):.5f}]")
-
-        ## compute the optimal action
-        optimal_action = np.argmax(exp_rewards_mat)
-        M, N = exp_rewards_mat.shape
-        optimal_i, optimal_j = action_to_ij(optimal_action, N)
-        optimal_reward = exp_rewards_mat[optimal_i][optimal_j]
 
         ## choose the best action
         noise = subgaussian_noise(
@@ -469,7 +470,7 @@ def bilinear_run(
         chosen_reward = exp_rewards_mat[chosen_i][chosen_j] + noise
 
         # HERE
-        if t % 10 == 0  and verbose:
+        if verbose:
             try:
                 string = f"""
                         case : {cfg.case}, SEED : {cfg.seed}, M : {cfg.arm_x}, N: {cfg.arm_y},
@@ -486,14 +487,22 @@ def bilinear_run(
                         Round : {t+1}, optimal : {optimal_action}, chosen action: {ij_to_action(chosen_i,chosen_j,cfg.arm_y)}
                     """
                 
-            save_log(path=LOG_PATH, fname=fname, string=" ".join(string.split()))
+            save_log(path=LOG_PATH+f"/{agent.__class__.__name__}/{trial}", fname=fname+f"_trial_{trial}", string=" ".join(string.split()))
+            
+        if t % 10 == 0:
             print(" ".join(string.split()))
 
+        # if t % 100 ==0:
+        #     checkpoint_data = dict()
+        #     checkpoint_data["np_random_state"] = np.random.get_state()
+        #     checkpoint_data["agent_parameter"] = agent.get_param()
+        #     save_checkpoint(path=CHECKPOINT_PATH+f"/{agent.__class__.__name__}/{trial}", fname=f"{t}_{fname}", data=checkpoint_data)
+        
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
 
         ## update the agent
-        if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA, ESTRLowOFUL)):
+        if isinstance(agent, (BiRoLFLasso, BiRoLFLasso_FISTA, ESTRLowOFUL)):
             agent.update(x=x, y=y, r=chosen_reward)
         elif isinstance(agent, ContextualBandit):
             agent.update(x=z, r=chosen_reward)
@@ -591,10 +600,10 @@ if __name__ == "__main__":
     SEED = cfg.seed
     sigma = cfg.reward_std
     AGENTS = [
-        "rolf_lasso",
         "birolf_lasso",
         "birolf_lasso_fista",
         "estr_lowoful",
+        "rolf_lasso",
         "rolf_ridge",
         "dr_lasso",
         "linucb",
