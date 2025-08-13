@@ -1,15 +1,8 @@
 from cfg import get_cfg
+from models import *
 from util import *
 import time
 import datetime
-from datetime import datetime as dt
-import matplotlib.pyplot as plt
-import numpy as np
-from collections import defaultdict
-import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
-import pickle
-import os
 
 MOTHER_PATH = "."
 
@@ -36,20 +29,6 @@ FIGURE_PATH = f"{MOTHER_PATH}/figures/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.
 LOG_PATH = (
     f"{MOTHER_PATH}/logs/{date}/seed_{cfg.seed}_p_{cfg.p}_std_{cfg.reward_std}"
 )
-
-# Global timing tracking variables
-TIMING_DATA = {}  # {agent_name: {trial: [update_times]}}
-TOTAL_EXECUTION_TIMES = {}  # {agent_name: [total_times_per_trial]}
-
-# Import models after setting up TIMING_DATA
-import models
-from models import *
-
-# Share timing data with models (if models has TIMING_DATA attribute)
-if hasattr(models, 'TIMING_DATA'):
-    models.TIMING_DATA = TIMING_DATA
-import models
-models.TIMING_DATA = TIMING_DATA
 
 ## ~! Generate feature matrix Z(full feature), X(observerable feature) !~
 
@@ -210,7 +189,6 @@ def bilinear_run_trial(
     case: int,
     verbose: bool,
     fname: str,
-    timing_data: dict = None,
 ):
     total_arms = M * N
     total_obs_dim = d_x * d_y
@@ -424,13 +402,6 @@ def bilinear_run_trial(
 
     # print(f"Agent : {agent.__class__.__name__}\t data shape : {data.shape}")
 
-    # Set timing data for BiRoLF agents
-    if hasattr(agent, '__class__') and agent.__class__.__name__ in ['BiRoLFLasso', 'BiRoLFLasso_FISTA']:
-        agent._timing_data = timing_data
-        agent._trial = now_trial
-
-    # Measure total execution time
-    trial_start_time = time.time()
     regrets = bilinear_run(
         trial=now_trial,
         agent=agent,
@@ -442,18 +413,7 @@ def bilinear_run_trial(
         noise_std=noise_std,
         verbose=verbose,
         fname=fname,
-        timing_data=timing_data,
     )
-    trial_total_time = time.time() - trial_start_time
-    
-    # Store total execution time in local timing data
-    agent_name = agent.__class__.__name__
-    if timing_data is not None:
-        if 'total_execution_times' not in timing_data:
-            timing_data['total_execution_times'] = {}
-        if agent_name not in timing_data['total_execution_times']:
-            timing_data['total_execution_times'][agent_name] = []
-        timing_data['total_execution_times'][agent_name].append(trial_total_time)
 
     regret_container[0] = regrets
     return regret_container
@@ -471,7 +431,6 @@ def bilinear_run(
     noise_std: float,
     verbose: bool,
     fname: str,
-    timing_data: dict = None,
 ):
     # x, y: augmented feature if the agent is RoLF (M, M), (N, N) each.
     regrets = np.zeros(horizon, dtype=float)
@@ -533,18 +492,13 @@ def bilinear_run(
         ## compute the regret
         regrets[t] = optimal_reward - exp_rewards_mat[chosen_i, chosen_j]
 
-        ## update the agent with timing measurement
-        update_start_time = time.time()
+        ## update the agent
         if isinstance(agent, (BiRoLFLasso,BiRoLFLasso_FISTA, ESTRLowOFUL)):
             agent.update(x=x, y=y, r=chosen_reward)
         elif isinstance(agent, ContextualBandit):
             agent.update(x=z, r=chosen_reward)
         else:
             agent.update(a=chosen_action, r=chosen_reward)
-        update_time = time.time() - update_start_time
-        
-        # Store total update time (not just lasso optimization time)
-        # The lasso optimization timing is handled separately in models.py
 
     return np.cumsum(regrets)
 
@@ -591,16 +545,12 @@ def bilinear_show_result(
 
 
 # Function to run trials for a single agent
-def bilinear_run_agent(args):
-    trial_agent, shared_timing_data, shared_total_times = args
+def bilinear_run_agent(trial_agent):
     now_trial, agent_type = trial_agent
     np.random.seed(cfg.seed + (513 * now_trial))
 
     start = time.perf_counter()
 
-    # Initialize local timing data for this process
-    local_timing_data = {}
-    
     regrets = bilinear_run_trial(
         agent_type=agent_type,
         now_trial=now_trial,
@@ -615,317 +565,13 @@ def bilinear_run_agent(args):
         case=cfg.case,
         verbose=True,
         fname=f"Case_{cfg.case}_Agent_{agent_type}_M_{cfg.arm_x}_N_{cfg.arm_y}_xstar_{cfg.true_dim_x}_ystar_{cfg.true_dim_y}_dx_{cfg.dim_x}_dy_{cfg.dim_y}_T_{cfg.horizon}_explored_{cfg.init_explore}_noise_{cfg.reward_std}",
-        timing_data=local_timing_data  # Pass timing data container
     )
     
     end = time.perf_counter()
-    
-    # Save timing data to temporary file for this process
-    agent_display_name = AGENT_DICT[agent_type]
-    timing_file = f"/tmp/timing_{agent_type}_{now_trial}.pkl"
-    timing_info = {
-        'optimization_times': local_timing_data,
-        'total_time': end - start,
-        'agent_name': agent_display_name,
-        'trial': now_trial
-    }
-    
-    try:
-        with open(timing_file, 'wb') as f:
-            pickle.dump(timing_info, f)
-    except Exception as e:
-        print(f"Warning: Could not save timing data: {e}")
-
-    key = (now_trial, agent_display_name)
-    return key, regrets, end - start, timing_file
 
 
-def plot_optimization_timing_comparison():
-    """Plot average optimization time comparison between BiRoLFLasso and BiRoLFLasso_FISTA"""
-    if not TIMING_DATA:
-        print("No timing data available for optimization comparison.")
-        return
-    
-    # Calculate average optimization times
-    avg_times = {}
-    std_times = {}
-    
-    for agent_name in ['BiRoLFLasso', 'BiRoLFLasso_FISTA']:
-        if agent_name in TIMING_DATA:
-            all_times = []
-            for trial_times in TIMING_DATA[agent_name].values():
-                all_times.extend(trial_times)
-            
-            if all_times:
-                avg_times[agent_name] = np.mean(all_times)
-                std_times[agent_name] = np.std(all_times)
-    
-    if len(avg_times) < 2:
-        print("Need both BiRoLFLasso and BiRoLFLasso_FISTA timing data for comparison.")
-        return
-    
-    # Create bar plot with enhanced visualization
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    agents = list(avg_times.keys())
-    times = list(avg_times.values())
-    errors = [std_times[agent] for agent in agents]
-    
-    # Create bars with different colors and transparency for variance
-    colors = ['#4472C4', '#E15759']  # Professional colors
-    x_pos = np.arange(len(agents))
-    
-    # Main bars
-    bars = ax.bar(x_pos, times, color=colors, alpha=0.8, edgecolor='black', linewidth=1.5, width=0.6)
-    
-    # Add error bars (standard deviation)
-    ax.errorbar(x_pos, times, yerr=errors, fmt='none', color='black', capsize=8, capthick=2, linewidth=2)
-    
-    # Add shaded regions for standard deviation
-    for i, (x, time_val, err) in enumerate(zip(x_pos, times, errors)):
-        ax.fill_between([x-0.3, x+0.3], [time_val-err, time_val-err], [time_val+err, time_val+err], 
-                       color=colors[i], alpha=0.2, label=f'±1σ {agents[i]}' if i < 2 else None)
-    
-    # Add value labels on bars
-    for i, (bar, time_val, err) in enumerate(zip(bars, times, errors)):
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + err + max(times) * 0.02,
-                f'{time_val:.6f}s\n±{err:.6f}s', ha='center', va='bottom', 
-                fontweight='bold', fontsize=11)
-    
-    # Add speedup annotation
-    if 'BiRoLFLasso' in avg_times and 'BiRoLFLasso_FISTA' in avg_times:
-        speedup = avg_times['BiRoLFLasso'] / avg_times['BiRoLFLasso_FISTA']
-        ax.text(0.5, max(times) * 0.6, f'FISTA is {speedup:.2f}x faster', 
-                ha='center', va='center', fontsize=16, fontweight='bold',
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="yellow", alpha=0.8, edgecolor='orange'))
-    
-    ax.set_ylabel('Average Optimization Time (seconds)', fontsize=14, fontweight='bold')
-    ax.set_title(f'Optimization Time Comparison\n(M={cfg.arm_x}, N={cfg.arm_y}, T={cfg.horizon}, Trials={cfg.trials})', 
-                fontsize=16, fontweight='bold')
-    ax.grid(True, alpha=0.3, linestyle='--')
-    
-    # Make agent names more readable
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(['BiRoLF-Lasso\n(Original)', 'BiRoLF-Lasso-FISTA\n(Accelerated)'], fontsize=12)
-    
-    # Add legend for variance shading
-    ax.legend(loc='upper right', framealpha=0.9)
-    
-    plt.tight_layout()
-    
-    # Generate filename with experiment parameters
-    fname_params = f"M_{cfg.arm_x}_N_{cfg.arm_y}_T_{cfg.horizon}_trials_{cfg.trials}_seed_{cfg.seed}"
-    
-    # Save plot
-    os.makedirs(FIGURE_PATH, exist_ok=True)
-    plt.savefig(f"{FIGURE_PATH}/optimization_timing_comparison_{fname_params}.png", dpi=300, bbox_inches='tight')
-    plt.savefig(f"{FIGURE_PATH}/optimization_timing_comparison_{fname_params}.pdf", bbox_inches='tight')
-    plt.show()
-    
-    # Print summary
-    print("\n" + "="*60)
-    print("OPTIMIZATION TIMING COMPARISON SUMMARY")
-    print("="*60)
-    for agent_name in agents:
-        print(f"{agent_name}: {avg_times[agent_name]:.6f} ± {std_times[agent_name]:.6f} seconds")
-    if len(agents) == 2:
-        speedup = avg_times[agents[0]] / avg_times[agents[1]]
-        print(f"\nSpeedup (FISTA): {speedup:.2f}x")
-    print("="*60)
-
-
-def plot_total_execution_time_comparison():
-    """Plot total execution time comparison across all algorithms"""
-    if not TOTAL_EXECUTION_TIMES:
-        print("No total execution time data available.")
-        return
-    
-    # Calculate statistics
-    avg_times = {}
-    std_times = {}
-    
-    for agent_name, times in TOTAL_EXECUTION_TIMES.items():
-        if times:
-            avg_times[agent_name] = np.mean(times)
-            std_times[agent_name] = np.std(times)
-    
-    if not avg_times:
-        print("No execution time data to plot.")
-        return
-    
-    # Sort by average time for better visualization
-    sorted_agents = sorted(avg_times.keys(), key=lambda x: avg_times[x])
-    
-    # Create horizontal bar plot for better readability
-    fig, ax = plt.subplots(figsize=(14, 10))
-    
-    y_pos = np.arange(len(sorted_agents))
-    times = [avg_times[agent] for agent in sorted_agents]
-    errors = [std_times[agent] for agent in sorted_agents]
-    
-    # Color BiRoLF algorithms differently with better color scheme
-    colors = []
-    edge_colors = []
-    for agent in sorted_agents:
-        if 'BiRoLF' in agent:
-            if 'FISTA' in agent:
-                colors.append('#E15759')  # Red for FISTA
-                edge_colors.append('#B91C1C')
-            else:
-                colors.append('#4472C4')  # Blue for original BiRoLF
-                edge_colors.append('#1E40AF')
-        else:
-            colors.append('#A5A5A5')  # Gray for others
-            edge_colors.append('#6B7280')
-    
-    # Main bars
-    bars = ax.barh(y_pos, times, color=colors, alpha=0.8, edgecolor=edge_colors, linewidth=1.5, height=0.6)
-    
-    # Add error bars (standard deviation)
-    ax.errorbar(times, y_pos, xerr=errors, fmt='none', color='black', capsize=5, capthick=1.5, linewidth=1.5)
-    
-    # Add shaded regions for standard deviation
-    for i, (y, time_val, err, color) in enumerate(zip(y_pos, times, errors, colors)):
-        ax.fill_betweenx([y-0.3, y+0.3], [time_val-err, time_val-err], [time_val+err, time_val+err], 
-                        color=color, alpha=0.2)
-    
-    # Add value labels with improved formatting
-    for i, (bar, time_val, err) in enumerate(zip(bars, times, errors)):
-        width = bar.get_width()
-        ax.text(width + err + max(times) * 0.02, bar.get_y() + bar.get_height()/2.,
-                f'{time_val:.3f}s ± {err:.3f}s', ha='left', va='center', 
-                fontweight='bold', fontsize=10)
-    
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels([AGENT_DICT.get(agent, agent) for agent in sorted_agents], fontsize=11)
-    ax.set_xlabel('Total Execution Time per Trial (seconds)', fontsize=14, fontweight='bold')
-    ax.set_title(f'Total Execution Time Comparison\n(M={cfg.arm_x}, N={cfg.arm_y}, T={cfg.horizon}, Trials={cfg.trials})', 
-                fontsize=16, fontweight='bold')
-    ax.grid(True, alpha=0.3, axis='x', linestyle='--')
-    
-    # Highlight BiRoLF algorithms
-    for i, agent in enumerate(sorted_agents):
-        if 'BiRoLF' in agent:
-            ax.get_yticklabels()[i].set_weight('bold')
-            if 'FISTA' in agent:
-                ax.get_yticklabels()[i].set_color('#E15759')
-            else:
-                ax.get_yticklabels()[i].set_color('#4472C4')
-    
-    plt.tight_layout()
-    
-    # Generate filename with experiment parameters
-    fname_params = f"M_{cfg.arm_x}_N_{cfg.arm_y}_T_{cfg.horizon}_trials_{cfg.trials}_seed_{cfg.seed}"
-    
-    # Save plot
-    os.makedirs(FIGURE_PATH, exist_ok=True)
-    plt.savefig(f"{FIGURE_PATH}/total_execution_time_comparison_{fname_params}.png", dpi=300, bbox_inches='tight')
-    plt.savefig(f"{FIGURE_PATH}/total_execution_time_comparison_{fname_params}.pdf", bbox_inches='tight')
-    plt.show()
-    
-    # Print summary
-    print("\n" + "="*80)
-    print("TOTAL EXECUTION TIME COMPARISON SUMMARY")
-    print("="*80)
-    print(f"{'Algorithm':<25} {'Avg Time (s)':<15} {'Std Time (s)':<15} {'Trials':<10}")
-    print("-"*80)
-    for agent_name in sorted_agents:
-        agent_display = AGENT_DICT.get(agent_name, agent_name)
-        n_trials = len(TOTAL_EXECUTION_TIMES[agent_name])
-        print(f"{agent_display:<25} {avg_times[agent_name]:<15.3f} {std_times[agent_name]:<15.3f} {n_trials:<10}")
-    print("="*80)
-
-
-def save_timing_data():
-    """Save timing data to pkl files"""
-    import pickle
-    import os
-    
-    # Create results directory
-    os.makedirs(RESULT_PATH, exist_ok=True)
-    
-    # Check if timing data exists
-    if TIMING_DATA is None or TOTAL_EXECUTION_TIMES is None:
-        print("No timing data available to save.")
-        return
-    
-    # Prepare timing data for saving
-    timing_summary = {
-        'optimization_times': dict(TIMING_DATA) if TIMING_DATA else {},
-        'total_execution_times': dict(TOTAL_EXECUTION_TIMES) if TOTAL_EXECUTION_TIMES else {},
-        'config': vars(cfg),
-        'timestamp': dt.now().isoformat()
-    }
-    
-    # Calculate statistics
-    timing_stats = {}
-    
-    # Optimization timing statistics
-    for agent_name in TIMING_DATA:
-        all_times = []
-        for trial_times in TIMING_DATA[agent_name].values():
-            all_times.extend(trial_times)
-        
-        if all_times:
-            timing_stats[agent_name] = {
-                'optimization': {
-                    'mean': np.mean(all_times),
-                    'std': np.std(all_times),
-                    'min': np.min(all_times),
-                    'max': np.max(all_times),
-                    'count': len(all_times)
-                }
-            }
-    
-    # Total execution timing statistics
-    for agent_name in TOTAL_EXECUTION_TIMES:
-        times = TOTAL_EXECUTION_TIMES[agent_name]
-        if times:
-            if agent_name not in timing_stats:
-                timing_stats[agent_name] = {}
-            timing_stats[agent_name]['total_execution'] = {
-                'mean': np.mean(times),
-                'std': np.std(times),
-                'min': np.min(times),
-                'max': np.max(times),
-                'count': len(times)
-            }
-    
-    timing_summary['statistics'] = timing_stats
-    
-    # Generate filename
-    case = cfg.case
-    M, N = cfg.arm_x, cfg.arm_y
-    d_x_star, d_y_star = cfg.true_dim_x, cfg.true_dim_y
-    d_x, d_y = cfg.dim_x, cfg.dim_y
-    T = cfg.horizon
-    sigma = cfg.reward_std
-    
-    timing_fname = f"timing_Case_{case}_M_{M}_N_{N}_xstar_{d_x_star}_ystar_{d_y_star}_dx_{d_x}_dy_{d_y}_T_{T}_explored_{cfg.init_explore}_noise_{sigma}"
-    
-    # Save detailed timing data
-    with open(f"{RESULT_PATH}/{timing_fname}_detailed.pkl", "wb") as f:
-        pickle.dump(timing_summary, f)
-    
-    # Save just statistics for easy loading
-    with open(f"{RESULT_PATH}/{timing_fname}_stats.pkl", "wb") as f:
-        pickle.dump(timing_stats, f)
-    
-    print(f"Timing data saved to:")
-    print(f"  - {RESULT_PATH}/{timing_fname}_detailed.pkl")
-    print(f"  - {RESULT_PATH}/{timing_fname}_stats.pkl")
-
-
-def plot_timing_analysis():
-    """Generate all timing analysis plots and save timing data"""
-    print("Generating timing analysis plots...")
-    plot_optimization_timing_comparison()
-    plot_total_execution_time_comparison()
-    
-    # Save timing data as pkl file
-    save_timing_data()
-    print("Timing analysis plots and data saved successfully!")
+    key = (now_trial,AGENT_DICT[agent_type])
+    return key, regrets, end - start
 
 
 if __name__ == "__main__":
@@ -945,9 +591,10 @@ if __name__ == "__main__":
     SEED = cfg.seed
     sigma = cfg.reward_std
     AGENTS = [
+        "rolf_lasso",
         "birolf_lasso",
         "birolf_lasso_fista",
-        "rolf_lasso",
+        "estr_lowoful",
         "rolf_ridge",
         "dr_lasso",
         "linucb",
@@ -962,18 +609,13 @@ if __name__ == "__main__":
     case = cfg.case
 
     # Parallel execution using ProcessPoolExecutor
-    # Prepare arguments for each worker (simplified - no shared data needed)
-    worker_args = [(trial_agent, None, None) for trial_agent in TRIALS_AGENTS]
-    
-    with ProcessPoolExecutor(max_workers=16) as executor:
-        results = executor.map(bilinear_run_agent, worker_args)
+    with ProcessPoolExecutor(max_workers=16)  as executor:
+        results = executor.map(bilinear_run_agent, TRIALS_AGENTS)
 
-    # Collect results and timing data
+    # Collect results
     regret_results = dict()
     time_check = dict()
-    timing_files = []
-    
-    for key, regrets, time, timing_file in results:
+    for key, regrets, time in results:
         now_trial, agent_type = key
 
         if agent_type not in regret_results.keys():
@@ -982,43 +624,6 @@ if __name__ == "__main__":
 
         regret_results[agent_type][now_trial] = regrets[0]
         time_check[agent_type] += time
-        
-        if timing_file:
-            timing_files.append(timing_file)
-
-    # Load timing data from temporary files
-    for timing_file in timing_files:
-        try:
-            with open(timing_file, 'rb') as f:
-                timing_info = pickle.load(f)
-            
-            # Process optimization timing data
-            if timing_info['optimization_times']:
-                for class_name, trial_data in timing_info['optimization_times'].items():
-                    if class_name not in TIMING_DATA:
-                        TIMING_DATA[class_name] = {}
-                    for trial_num, times in trial_data.items():
-                        if trial_num not in TIMING_DATA[class_name]:
-                            TIMING_DATA[class_name][trial_num] = []
-                        TIMING_DATA[class_name][trial_num].extend(times)
-            
-            # Process total execution timing data
-            agent_name = timing_info['agent_name']
-            trial_num = timing_info['trial']
-            total_time = timing_info['total_time']
-            
-            if agent_name not in TOTAL_EXECUTION_TIMES:
-                TOTAL_EXECUTION_TIMES[agent_name] = []
-            # Ensure list is long enough
-            while len(TOTAL_EXECUTION_TIMES[agent_name]) <= trial_num:
-                TOTAL_EXECUTION_TIMES[agent_name].append(0)
-            TOTAL_EXECUTION_TIMES[agent_name][trial_num] = total_time
-            
-            # Clean up temporary file
-            os.remove(timing_file)
-            
-        except Exception as e:
-            print(f"Warning: Could not load timing data from {timing_file}: {e}")
 
     fig = bilinear_show_result(regrets=regret_results, horizon=T, fontsize=15)
 
@@ -1032,13 +637,6 @@ if __name__ == "__main__":
         fname=fname,
         filetype=cfg.filetype,
     )
-    
-    # Generate timing analysis plots
-    print("\n" + "="*80)
-    print("GENERATING TIMING ANALYSIS PLOTS")
-    print("="*80)
-    plot_timing_analysis()
-    print("All plots and results saved successfully!")
 
 #
 ###### ! BEFORE CHANGE ! #############
@@ -1490,3 +1088,9 @@ if __name__ == "__main__":
 #     fig = show_result(regrets=regret_results, horizon=T, fontsize=15)
 
 #     save_plot(fig, path=FIGURE_PATH, fname=fname)
+#     save_result(
+#         result=(vars(cfg), regret_results),
+#         path=RESULT_PATH,
+#         fname=fname,
+#         filetype=cfg.filetype,
+#     )
